@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="xposed_scope">
+        <item>com.truthsocial.android.app</item>
+        <!-- Self-scope so LSPosed hooks Context.getSharedPreferences in our
+             SettingsActivity, which redirects MODE_WORLD_READABLE writes to
+             the LSPosed-managed dir that XSharedPreferences reads from. -->
+        <item>com.example.mtga</item>
+    </string-array>
+</resources>

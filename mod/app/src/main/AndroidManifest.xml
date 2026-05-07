@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:label="MTGA"
+        android:theme="@android:style/Theme.DeviceDefault">
+
+        <!-- LSPosed module metadata -->
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="93" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="Ad blocker and feature enhancer for Truth Social" />
+        <meta-data
+            android:name="xposedscope"
+            android:resource="@array/xposed_scope" />
+
+        <!--
+            SettingsActivity is launched from inside Truth Social via:
+              - explicit Intent from TruthSocialPreferencesHook (injected row in TS prefs)
+              - explicit Intent from InAppSettingsHook (triple-tap top-left avatar fallback)
+            No LAUNCHER intent-filter, so MTGA does not appear in the app drawer.
+        -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="true"
+            android:label="MTGA settings" />
+    </application>
+</manifest>

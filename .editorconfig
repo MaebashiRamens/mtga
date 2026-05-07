@@ -1,0 +1,27 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{md,markdown}]
+indent_size = 2
+trim_trailing_whitespace = false
+
+[*.{nix,yml,yaml,json}]
+indent_size = 2
+
+[*.{kt,kts}]
+# SettingKeys.AdBlock and friends are deliberately PascalCase — they act as a
+# typed registry of keys, not Java-style mutable constants.
+ktlint_standard_property-naming = disabled
+# ViewParams() in SettingsActivity is a factory (returns LayoutParams).
+ktlint_standard_function-naming = disabled
+# Targets.kt uses // section markers immediately before KDocs.
+ktlint_standard_no-consecutive-comments = disabled
+# Config tables have a few long Toggle(...) lines; 160 is more humane.
+max_line_length = 160

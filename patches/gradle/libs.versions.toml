@@ -1,0 +1,9 @@
+[versions]
+revanced-patcher = "21.0.0"
+# Tracking https://github.com/google/smali/issues/64.
+#noinspection GradleDependency
+smali = "3.0.5"
+
+[libraries]
+revanced-patcher = { module = "app.revanced:revanced-patcher", version.ref = "revanced-patcher" }
+smali = { module = "com.android.tools.smali:smali", version.ref = "smali" }

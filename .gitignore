@@ -1,0 +1,31 @@
+# Build
+build/
+.gradle/
+
+# Nix
+result
+.direnv/
+
+# Generated
+*.apk
+*.apkm
+*.crdownload
+decompiled_*/
+jadx_output/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.keystore
+*.jks
+
+# LLM
+.claude/settings.local.json

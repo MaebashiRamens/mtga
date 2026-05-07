@@ -1,0 +1,10 @@
+{
+  // mdformat doesn't wrap prose — line-length is enforced by the editor, not
+  // the formatter. Disable MD013 instead of fighting it.
+  "MD013": false,
+  // mdformat emits compact `|x|y|` tables without padding. Don't fight it.
+  "MD060": false,
+  // HANDOFF.md and other long-form docs use ``` blocks for trees/listings/
+  // ad-hoc snippets where forcing a language tag adds churn without value.
+  "MD040": false
+}
