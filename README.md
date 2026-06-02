@@ -39,6 +39,7 @@ Two independent Gradle projects:
 
 | versionName | versionCode | base.apk SHA-256 |
 |---|---|---|
+| 1.26.1 | 1254 | `2e974acac3ec18b1dfc7ccf98c49159896fe391f2ee0d1606581315f4abda158` |
 | 1.24.8 | 1228 | `bcca813e2920602f0a9908240c537dc1d9ee6b6a90213e2b0be03e6458f35c1a` |
 | 1.24.6 | 1226 | `6108f4127e7ec04be40454ab083bfde870f0055ce7e2511e9f730418c2d2cc93` |
 

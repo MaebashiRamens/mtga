@@ -39,7 +39,7 @@ package com.example.mtga.common
 object Targets {
     const val PACKAGE = "com.truthsocial.android.app"
 
-    val knownVersions: List<TargetSet> = listOf(TargetsV1_24_8, TargetsV1_24_6)
+    val knownVersions: List<TargetSet> = listOf(TargetsV1_26_1, TargetsV1_24_8, TargetsV1_24_6)
 
     val knownVersionNames: Array<String>
         get() = knownVersions.map { it.buildId.versionName }.toTypedArray()
@@ -284,6 +284,58 @@ data class BuildId(
     /** SHA-256 of base.apk extracted from the apkmirror bundle. Hex lowercase. */
     val baseApkSha256: String,
 )
+
+// v1.26.1 R8 hashing is mostly stable against v1.24.8 — the obfuscated names
+// for hooks/patches are identical except:
+//   - searchAiUseCase: the FQN `com.truthsocial.app.domain.usecase.ai.SearchAIUseCase`
+//     no longer survives R8; the class is now renamed to `x8.l` (the use case
+//     body was emptied to a no-op holder, so DisableSearchAiPatch becomes a
+//     defensive no-op, and the runtime hook silently fails — Truth Search AI
+//     label blanking still works via `blankStringResource`).
+//   - resStringHelpCenter: shifted by 3 ids as new string resources were
+//     inserted above it.
+private val TargetsV1_26_1 =
+    TargetSet(
+        buildId =
+            BuildId(
+                versionName = "1.26.1",
+                versionCode = 1254,
+                baseApkSha256 = "2e974acac3ec18b1dfc7ccf98c49159896fe391f2ee0d1606581315f4abda158",
+            ),
+        integrityInterceptor = ClassTarget("Q6.b"),
+        integrityInterceptMethod = "a",
+        chainRequestField = "e",
+        chainProceedMethod = "b",
+        retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
+        feedsRepository = ClassTarget("g8.h"),
+        appStateManager = ClassTarget("O6.b"),
+        adQueueManager = ClassTarget("v7.d"),
+        adImpressionManager = ClassTarget("v7.a"),
+        analyticsManager = ClassTarget("ac.c"),
+        sidebarItemRenderer = ClassTarget("E6.f"),
+        accountDrawerScreen = ClassTarget("E6.y"),
+        topAppBarFactory = ClassTarget("Xa.e"),
+        navDrawerAvatar = ClassTarget("X5.B"),
+        bottomNavTabs = ClassTarget("C6.g"),
+        bottomNavAiTab = ClassTarget("C6.f\$f"),
+        bottomNavAlertsTab = ClassTarget("C6.f\$a"),
+        swipeableRow = ClassTarget("c6.d"),
+        searchAiUseCase = ClassTarget("x8.l"),
+        premiumGateHelper = ClassTarget("L6.U"),
+        composerViewModel = ClassTarget("db.P"),
+        composerScheduleClickMethod = "x1",
+        navHandler = ClassTarget("Ub.n"),
+        navHandlerNavigateMethod = "d",
+        truthPlusUpsellRoute = ClassTarget("Wb.M\$a"),
+        premiumFeatureRoadblockRoute = ClassTarget("Wb.A\$a"),
+        preferencesBuilder = ClassTarget("sa.j"),
+        preferencesBuilderMethod = "p",
+        preferencesSection = ClassTarget("ic.b"),
+        preferencesTextRow = ClassTarget("ic.d"),
+        kotlinFunction0 = ClassTarget("Mc.a"),
+        kotlinUnit = ClassTarget("yc.v"),
+        resStringHelpCenter = 0x7f120255,
+    )
 
 private val TargetsV1_24_8 =
     TargetSet(
