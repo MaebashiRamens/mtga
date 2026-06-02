@@ -1,15 +1,13 @@
 package com.example.mtga.patches.ui
 
 import app.revanced.patcher.extensions.addInstructions
+import app.revanced.patcher.patch.PatchException
 import app.revanced.patcher.patch.bytecodePatch
 import com.example.mtga.patches.MTGA_COMPATIBLE_VERSIONS
 import com.example.mtga.patches.MTGA_TARGET_PACKAGE
 import com.example.mtga.patches.methodsNamed
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
-
-// TopAppBar TRUTH+ upsell button — `i()` Composable. Replacing the body
-// with `return-void` makes the button vanish.
 
 @Suppress("unused")
 val hideTruthPlusButtonPatch =
@@ -21,8 +19,31 @@ val hideTruthPlusButtonPatch =
 
         execute {
             val targets = mtgaTargets
+
+            // i() is a Composable returning kotlin.Unit; `return-void`
+            // fails verification so emit `return-object UNIT_SINGLETON`.
+            val unitDesc = targets.kotlinUnit.descriptor
+            val unitClass = mutableClassByType(unitDesc)
+            val unitInstanceField =
+                unitClass.staticFields.firstOrNull { it.type == unitDesc }
+                    ?: throw PatchException("$unitDesc has no singleton field")
+
             mutableClassByType(targets.topAppBarFactory.descriptor)
                 .methodsNamed("i")
-                .forEach { it.addInstructions(0, "return-void") }
+                .forEach { method ->
+                    val returnSmali =
+                        when (method.returnType) {
+                            "V" -> "return-void"
+                            unitDesc ->
+                                """
+                                sget-object v0, $unitDesc->${unitInstanceField.name}:$unitDesc
+                                return-object v0
+                                """
+                            else -> throw PatchException(
+                                "${targets.topAppBarFactory.name}.i: unexpected return type ${method.returnType}",
+                            )
+                        }
+                    method.addInstructions(0, returnSmali)
+                }
         }
     }

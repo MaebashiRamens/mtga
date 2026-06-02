@@ -85,6 +85,26 @@ data class TargetSet(
      * package + class name on every build. Hard-coded as a sanity-check.
      */
     val retrofitOkHttpCall: ClassTarget,
+    /**
+     * R8-renamed `enqueue(Callback)` on [retrofitOkHttpCall]. Patched by
+     * [BlockOkHttpAdsPatch] to short-circuit `/truth/ads` requests.
+     *
+     * HOW TO LOCATE: the only public void method on `OkHttpCall` taking a
+     * single argument typed as `retrofit2.Callback` (itself R8-renamed —
+     * look for the parameter type that has a single non-default method
+     * named `onResponse` or similar). Usually single-letter `l`.
+     */
+    val retrofitOkHttpCallEnqueueMethod: String,
+    /**
+     * R8-renamed `createRawCall()` analog — builds the `okhttp3.Request`
+     * from `requestFactory.create(args)`. Returns `we.B` (Request).
+     *
+     * HOW TO LOCATE: the only public method on `OkHttpCall` whose return
+     * type is the Request type (`Lwe/B;` shape — a class with a single-
+     * field `<init>(Builder)`). Usually `declared-synchronized` and
+     * usually named `p`.
+     */
+    val retrofitOkHttpCallRequestMethod: String,
     // ---------------------------- Repositories -------------------------------
     /**
      * `FeedsRepositoryImpl` — methods that take or return `List<Feed>` where
@@ -307,6 +327,8 @@ private val TargetsV1_26_1 =
         chainRequestField = "e",
         chainProceedMethod = "b",
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
+        retrofitOkHttpCallEnqueueMethod = "l",
+        retrofitOkHttpCallRequestMethod = "p",
         feedsRepository = ClassTarget("g8.h"),
         appStateManager = ClassTarget("O6.b"),
         adQueueManager = ClassTarget("v7.d"),
@@ -350,6 +372,8 @@ private val TargetsV1_24_8 =
         chainRequestField = "e",
         chainProceedMethod = "b",
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
+        retrofitOkHttpCallEnqueueMethod = "l",
+        retrofitOkHttpCallRequestMethod = "p",
         feedsRepository = ClassTarget("g8.h"),
         appStateManager = ClassTarget("O6.b"),
         adQueueManager = ClassTarget("v7.d"),
@@ -398,6 +422,8 @@ private val TargetsV1_24_6 =
         chainRequestField = "e",
         chainProceedMethod = "b",
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
+        retrofitOkHttpCallEnqueueMethod = "l",
+        retrofitOkHttpCallRequestMethod = "p",
         feedsRepository = ClassTarget("g8.h"),
         appStateManager = ClassTarget("O6.b"),
         adQueueManager = ClassTarget("v7.d"),

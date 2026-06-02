@@ -8,11 +8,6 @@ import com.example.mtga.patches.methodsNamed
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
-// AdQueueManager —
-//   `b(zone, continuation)`  fetchAd        → `return null`
-//   `c(adIndexes, zone, feedItemList, cont)` insertAdsIntoFeed → `return p3`
-// (Class is known as `v7.d` on v1.24.6 / v1.24.8.)
-
 @Suppress("unused")
 val hideAdsPatch =
     bytecodePatch(
@@ -25,7 +20,6 @@ val hideAdsPatch =
             val targets = mtgaTargets
             val adQueue = mutableClassByType(targets.adQueueManager.descriptor)
 
-            // fetchAd → return null
             adQueue.methodsNamed("b").forEach { method ->
                 method.addInstructions(
                     0,
@@ -36,8 +30,7 @@ val hideAdsPatch =
                 )
             }
 
-            // insertAdsIntoFeed → return feedItemList (p3)
-            // Non-static: p0=this, p1=adIndexes, p2=zone, p3=feedItemList, p4=Continuation.
+            // insertAdsIntoFeed: p3 is the feedItemList, returned unchanged skips the merge.
             adQueue.methodsNamed("c").forEach { method ->
                 method.addInstructions(0, "return-object p3")
             }

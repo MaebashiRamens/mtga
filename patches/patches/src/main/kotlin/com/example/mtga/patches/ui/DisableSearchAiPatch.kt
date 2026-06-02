@@ -7,10 +7,8 @@ import com.example.mtga.patches.MTGA_TARGET_PACKAGE
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByTypeOrNull
 
-// SearchAIUseCase. Class name is full-package because Hilt injects it by FQN
-// — R8 keeps it for that reason. The use case's `invoke()` typically returns
-// a Single<...> wrapper; we short-circuit to null so subscribers see no
-// result. Skips silently if the class has been removed.
+// Calibrated SearchAIUseCase has been emptied in some builds (R8 stripped
+// `invoke`). Silently skip when the class or method is absent.
 
 @Suppress("unused")
 val disableSearchAiPatch =

@@ -7,11 +7,9 @@ import com.example.mtga.patches.MTGA_TARGET_PACKAGE
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
-// `<premiumGateHelper>.d(user)` is the US-country geofence helper. It checks
-// `user.smsCountry == "US"` and gates several Truth+ features behind that.
-// Forcing it to always return true is a prerequisite for any "force-enable
-// Truth+ feature" patch — otherwise even with Features.* set true, the
-// helper still suppresses the buttons.
+// L6.U.d(user) is the smsCountry=="US" geofence; the other helpers (a/c/e/g)
+// AND their feature flag with it, so forcing d() true is the prerequisite
+// for the ForceEnable* patches to actually surface buttons.
 
 @Suppress("unused")
 val premiumGeofenceBypassPatch =

@@ -9,16 +9,6 @@ import com.example.mtga.patches.methodsNamed
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
-// Truth Gems UI surfaces. All four are @Composable lambdas; replacing the
-// body with `return-void` renders nothing.
-//
-//   navDrawerAvatar.k() — default-zero gem badge
-//   navDrawerAvatar.m() — actual-count gem badge
-//   accountDrawerScreen.M() — drawer-header gem button
-//   accountDrawerScreen.b0() — Truth Gems banner card
-//
-// All TargetSet-driven so a future R8 rename is one TargetSet entry away.
-
 @Suppress("unused")
 val hideTruthGemsPatch =
     bytecodePatch(

@@ -5,10 +5,6 @@ import com.example.mtga.patches.MTGA_COMPATIBLE_VERSIONS
 import com.example.mtga.patches.MTGA_TARGET_PACKAGE
 import org.w3c.dom.Element
 
-// Strip advertising-ID and ad-services permissions from the manifest. The
-// runtime LSPosed module has no equivalent — these permissions are baked
-// at install time.
-
 private val PERMISSIONS_TO_REMOVE =
     setOf(
         "com.google.android.gms.permission.AD_ID",
