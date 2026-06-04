@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   release:
-    name: Build and publish .rvp
+    name: Build and publish artifacts
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -26,6 +26,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools build-tools;35.0.0 platforms;android-34 platforms;android-35'
 
       - uses: gradle/actions/setup-gradle@v6
 
@@ -47,17 +51,26 @@ jobs:
           ORG_GRADLE_PROJECT_githubPackagesPassword: ${{ secrets.GITHUB_TOKEN }}
         run: ../gradlew :patches:build
 
-      - name: Stage artifact
+      - name: Assemble LSPosed module APK
+        working-directory: mod
+        run: ../gradlew :app:assembleDebug
+
+      - name: Stage artifacts
         run: |
           mkdir -p release
-          src=$(ls patches/patches/build/libs/patches-*.rvp \
+          ver="${{ steps.meta.outputs.version }}"
+          rvp=$(ls patches/patches/build/libs/patches-*.rvp \
                 | grep -v sources | head -1)
-          cp "$src" "release/mtga-patches-${{ steps.meta.outputs.version }}.rvp"
+          apk=$(ls mod/app/build/outputs/apk/debug/*.apk | head -1)
+          cp "$rvp" "release/mtga-patches-${ver}.rvp"
+          cp "$apk" "release/mtga-module-${ver}.apk"
 
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: ${{ steps.meta.outputs.tag }}
-          files: release/*.rvp
+          files: |
+            release/*.rvp
+            release/*.apk
           generate_release_notes: true
           fail_on_unmatched_files: true
