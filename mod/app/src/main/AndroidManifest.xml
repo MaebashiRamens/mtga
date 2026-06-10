@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+        Granted automatically (normal-protection) — no runtime prompt. We use
+        it from SettingsActivity to kill the Truth Social process when the
+        user leaves MTGA Settings, so the host restarts with the freshly-
+        edited preferences on its next launch. Limited to backgrounded
+        processes by the Android framework, which is exactly the case here.
+    -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+
     <application
         android:label="MTGA"
         android:theme="@android:style/Theme.DeviceDefault">
@@ -28,6 +37,59 @@
         <activity
             android:name=".SettingsActivity"
             android:exported="true"
-            android:label="MTGA settings" />
+            android:label="MTGA settings"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:autoRemoveFromRecents="true">
+            <!--
+                MTGA needs to be visible to Truth Social's process so the host
+                can resolve our ContentProvider authority across Android 11+
+                package-visibility filtering. Truth Social's manifest declares
+                a generic `<queries><intent>` for VIEW + BROWSABLE + https, so
+                publishing a matching (non-default, non-tap-able) intent-filter
+                here grants persistent visibility without polluting the user's
+                "Open with…" chooser or app drawer. The activity itself stays
+                effectively hidden — it's not launched from any HTTP URL flow
+                because we register only a scheme with no host pattern.
+            -->
+            <!--
+                CATEGORY_DEFAULT is intentionally OMITTED — without it the
+                activity does NOT appear in implicit URL choosers, so the user
+                never sees MTGA listed for arbitrary https links. The filter
+                is purely a visibility token: Truth Social's manifest already
+                declares `<queries><intent>...</intent>` matching this exact
+                shape (action VIEW + category BROWSABLE + scheme https, no
+                host), so the system grants Truth Social visibility over the
+                MTGA package — which in turn lets `ContentResolver.query` on
+                `com.example.mtga.settings` succeed.
+
+                Host is also OMITTED so the filter matches Truth Social's
+                test intent (which has no specific host).
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            Cross-process IPC bridge for the hooked Truth Social process.
+            LSPosed's MODE_WORLD_READABLE redirect does not run for modules
+            on the LSPosed denylist (a common default for module packages),
+            so XSharedPreferences-based reading silently fails. Instead the
+            host queries this provider via ContentResolver — see
+            com.example.mtga.config.SettingsContentProvider.
+
+            android:exported="true" is required so callers from other
+            packages can resolve the authority. The provider is strictly
+            read-only and returns string-serialised values for every
+            persisted MTGA setting key (no PII).
+        -->
+        <provider
+            android:name=".config.SettingsContentProvider"
+            android:authorities="com.example.mtga.settings"
+            android:exported="true"
+            android:grantUriPermissions="false" />
     </application>
 </manifest>
