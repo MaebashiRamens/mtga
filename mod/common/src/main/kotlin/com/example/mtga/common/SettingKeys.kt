@@ -28,6 +28,46 @@ object SettingKeys {
     const val PostEditMode = "post_edit_mode"
     const val PostScheduleMode = "post_schedule_mode"
     const val BlockTruthPlusUpsell = "block_truth_plus_upsell"
+
+    // Bottom-bar tab reorder (v1.26.2+; the older builds use a dynamic tab
+    // list and aren't affected). The order string is a comma-separated list
+    // of route ids; unknown routes are appended at the end in their original
+    // order so the feature degrades safely if the user supplies a partial list.
+    const val ReorderBottomBar = "reorder_bottom_bar"
+    const val BottomBarTabOrder = "bottom_bar_tab_order"
+    const val DefaultBottomBarTabOrder = "feeds,discover,alerts,groups,predictions"
+
+    /**
+     * `currentTimeMillis()` snapshot, written by SettingsActivity on every
+     * `onStop`. The Truth Social hook reads it on cold start and on every
+     * `Activity.onResume`; when it changes between two reads, the host
+     * process kills itself so the next launch picks up freshly-saved prefs.
+     * Auto-restart on return from MTGA Settings without root.
+     */
+    const val RestartMarker = "restart_marker"
+
+    // Per-field Features overrides. Each key persists a [FeatureOverride]
+    // (Default / ForceTrue / ForceFalse). Constructor-argument indices follow
+    // Truth Social v1.27.0's `Features` data class:
+    //   0: tvEnabled (Z)              1: forYouEnabled (Z)
+    //   2: editsEnabled (Boolean)     3: editsVisible (Boolean)
+    //   4: scheduleEnabled (Boolean)  5: scheduleVisible (Boolean)
+    //   6: gemsEnabled (Boolean)      7: gemsVisible (Boolean)
+    //   8: predictionsEnabled (Boolean, added v1.26.2)
+    //   9: videoScrollingEnabled (Boolean, added v1.26.2)
+    //  10: liveContentCarouselEnabled (Boolean, added v1.27.0)
+    // Indices 0 and 1 are primitive `boolean`; 2..10 are nullable Boolean.
+    const val FeatureTvEnabled = "feature_tv_enabled"
+    const val FeatureForYouEnabled = "feature_for_you_enabled"
+    const val FeatureEditsEnabled = "feature_edits_enabled"
+    const val FeatureEditsVisible = "feature_edits_visible"
+    const val FeatureScheduleEnabled = "feature_schedule_enabled"
+    const val FeatureScheduleVisible = "feature_schedule_visible"
+    const val FeatureGemsEnabled = "feature_gems_enabled"
+    const val FeatureGemsVisible = "feature_gems_visible"
+    const val FeaturePredictionsEnabled = "feature_predictions_enabled"
+    const val FeatureVideoScrollingEnabled = "feature_video_scrolling_enabled"
+    const val FeatureLiveContentCarouselEnabled = "feature_live_content_carousel_enabled"
 }
 
 /** Per-feature behavior selector for premium-gated buttons. */
@@ -46,5 +86,28 @@ enum class PremiumMode(
 
     companion object {
         fun fromStorage(value: String?): PremiumMode = values().firstOrNull { it.storageValue == value } ?: Default
+    }
+}
+
+/**
+ * Three-state override for an individual field on Truth Social's `Features`
+ * data class. Lets the user flip a server-supplied boolean independently of
+ * higher-level toggles (`enable_tv`, `post_edit_mode`) that may touch the
+ * same fields.
+ *
+ *  - [Default]: leave the server value untouched.
+ *  - [ForceTrue]: overwrite the ctor argument with `true` / Boolean.TRUE.
+ *  - [ForceFalse]: overwrite the ctor argument with `false` / Boolean.FALSE.
+ */
+enum class FeatureOverride(
+    val storageValue: String,
+) {
+    Default("default"),
+    ForceTrue("force_true"),
+    ForceFalse("force_false"),
+    ;
+
+    companion object {
+        fun fromStorage(value: String?): FeatureOverride = values().firstOrNull { it.storageValue == value } ?: Default
     }
 }
