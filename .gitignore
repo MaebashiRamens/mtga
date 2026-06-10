@@ -9,6 +9,7 @@ result
 # Generated
 *.apk
 *.apkm
+*.xapk
 *.crdownload
 decompiled_*/
 jadx_output/
