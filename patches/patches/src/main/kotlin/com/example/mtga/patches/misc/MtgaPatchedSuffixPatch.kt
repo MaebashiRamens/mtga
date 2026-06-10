@@ -13,9 +13,9 @@ import com.example.mtga.patches.MTGA_TARGET_PACKAGE
 
 private const val SUFFIX = "-mtga-patched"
 
-// BuildConfig.VERSION_NAME is a compile-time constant so the Java compiler
-// inlines the literal at every call site. A manifest-only rewrite wouldn't
-// reach the AppBuildInfo path that backs the About screen.
+// BuildConfig.VERSION_NAME is a compile-time constant so javac inlines the
+// literal at every call site. A manifest-only rewrite wouldn't reach the
+// AppBuildInfo path that backs the About screen.
 @Suppress("unused")
 val mtgaPatchedSuffixBytecodePatch =
     bytecodePatch(use = true) {
@@ -54,8 +54,8 @@ val mtgaPatchedSuffixPatch =
         dependsOn(mtgaPatchedSuffixBytecodePatch)
 
         execute {
-            // apktool strips android:versionName during decode; setting
-            // the attribute back forces aapt2 link to re-encode it.
+            // apktool strips android:versionName during decode; setting the
+            // attribute back forces aapt2 link to re-encode it.
             document("AndroidManifest.xml").use { document ->
                 val manifest = document.documentElement
                 val versionName = Targets.latest.buildId.versionName

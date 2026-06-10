@@ -5,14 +5,17 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import com.example.mtga.common.SettingKeys
-import com.example.mtga.common.TargetSet
+import com.example.mtga.common.StaticResolver
+import com.example.mtga.common.TargetResolver
 import com.example.mtga.common.Targets
 import com.example.mtga.config.Settings
 import com.example.mtga.config.SettingsHolder
 import com.example.mtga.hooks.AdBlockHook
 import com.example.mtga.hooks.AnalyticsBlockHook
 import com.example.mtga.hooks.BaseHook
+import com.example.mtga.hooks.BottomBarReorderHook
 import com.example.mtga.hooks.FeatureFlagHook
+import com.example.mtga.hooks.HostRestartHook
 import com.example.mtga.hooks.InAppSettingsHook
 import com.example.mtga.hooks.IntegrityBypassHook
 import com.example.mtga.hooks.NotificationBadgeFixHook
@@ -28,8 +31,8 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 /**
  * MTGA entrypoint. Defers hook installation until Application.onCreate so we
  * can read PackageInfo.versionCode and pick the matching [TargetSet]. If the
- * running build is not in [Targets.knownVersions], we abort with a Toast
- * warning rather than binding hooks to wrong obfuscated symbols.
+ * running build is not in [Targets.knownVersions], we fall back to the latest
+ * known set via [FallbackResolver] and warn the user via Toast.
  */
 class MainHook : IXposedHookLoadPackage {
     companion object {
@@ -42,9 +45,9 @@ class MainHook : IXposedHookLoadPackage {
 
         XposedBridge.log("[$TAG] Loaded into ${lpparam.packageName}")
 
-        // We need a Context to read versionCode. Hook Application.onCreate
-        // and install everything from there. Class lookups happen at that
-        // point so they see the host's classloader.
+        // Need a Context to read versionCode. Hook Application.onCreate and
+        // install everything from there so class lookups see the host
+        // classloader.
         XposedHelpers.findAndHookMethod(
             "android.app.Application",
             lpparam.classLoader,
@@ -71,29 +74,33 @@ class MainHook : IXposedHookLoadPackage {
         val versionCode = pi.versionCode
         val versionName = pi.versionName ?: "?"
 
-        val targets = Targets.forVersionCode(versionCode)
-        if (targets == null) {
-            val supported = Targets.knownVersions.joinToString { it.buildId.versionName }
-            warnUser(
-                app,
-                "MTGA: Truth Social $versionName ($versionCode) is not calibrated. " +
-                    "Hooks disabled. Tested versions: $supported.",
-            )
-            return
-        }
-        XposedBridge.log("[$TAG] Truth Social $versionName ($versionCode) — calibrated")
+        val match = Targets.forVersionCodeOrLatest(versionCode)
+        val resolver: TargetResolver =
+            if (match.exact) {
+                XposedBridge.log("[$TAG] Truth Social $versionName ($versionCode) — calibrated")
+                StaticResolver(match.set, classLoader)
+            } else {
+                val supported = Targets.knownVersions.joinToString { it.buildId.versionName }
+                warnUser(
+                    app,
+                    "MTGA: ${match.warning} Calibrated versions: $supported.",
+                )
+                FallbackResolver(match.set, classLoader, app)
+            }
 
         val hooks: List<Pair<BaseHook, String?>> =
             listOf(
-                TruthSocialPreferencesHook(targets) to null, // always on — primary in-app entry to MTGA settings
-                InAppSettingsHook(targets) to null, // always on — fallback triple-tap gateway
-                FeatureFlagHook(targets) to null, // checks each toggle internally
-                AdBlockHook(targets) to SettingKeys.AdBlock,
-                OkHttpAdInterceptorHook(targets) to SettingKeys.AdBlock,
-                AnalyticsBlockHook(targets) to SettingKeys.AnalyticsBlock,
-                IntegrityBypassHook(targets) to SettingKeys.IntegrityBypass,
-                UICleanupHook(targets) to null, // checks per-feature toggles internally
-                NotificationBadgeFixHook(targets) to SettingKeys.ClearAlertBadge,
+                TruthSocialPreferencesHook(resolver) to null, // always on — primary in-app entry to MTGA settings
+                InAppSettingsHook(resolver) to null, // always on — fallback triple-tap gateway
+                HostRestartHook(resolver) to null, // always on — auto-restart Truth Social on settings change
+                FeatureFlagHook(resolver) to null, // checks each toggle internally
+                AdBlockHook(resolver) to SettingKeys.AdBlock,
+                OkHttpAdInterceptorHook(resolver) to SettingKeys.AdBlock,
+                AnalyticsBlockHook(resolver) to SettingKeys.AnalyticsBlock,
+                IntegrityBypassHook(resolver) to SettingKeys.IntegrityBypass,
+                UICleanupHook(resolver) to null, // checks per-feature toggles internally
+                NotificationBadgeFixHook(resolver) to SettingKeys.ClearAlertBadge,
+                BottomBarReorderHook(resolver) to SettingKeys.ReorderBottomBar,
             )
 
         for ((hook, gate) in hooks) {

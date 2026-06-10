@@ -9,7 +9,7 @@ import com.example.mtga.patches.mutableClassByType
 
 // dexlib2's `methods` includes constructors (also V-returning). A
 // `return-void` at ctor entry skips the mandatory super call and the
-// verifier rejects the class, so exclude `<init>`.
+// verifier rejects the class. Exclude `<init>`.
 
 @Suppress("unused")
 val disableAnalyticsPatch =

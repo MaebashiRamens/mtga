@@ -21,7 +21,7 @@ val hideTruthPlusButtonPatch =
             val targets = mtgaTargets
 
             // i() is a Composable returning kotlin.Unit; `return-void`
-            // fails verification so emit `return-object UNIT_SINGLETON`.
+            // fails verification, so emit `return-object UNIT_SINGLETON`.
             val unitDesc = targets.kotlinUnit.descriptor
             val unitClass = mutableClassByType(unitDesc)
             val unitInstanceField =

@@ -1,7 +1,7 @@
 package com.example.mtga.hooks
 
 import com.example.mtga.MainHook.Companion.TAG
-import com.example.mtga.common.TargetSet
+import com.example.mtga.common.TargetResolver
 import de.robv.android.xposed.XC_MethodReplacement
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
@@ -12,8 +12,8 @@ import de.robv.android.xposed.XposedHelpers
  *  - Firebase Crashlytics + Analytics: known logging methods become no-op
  */
 class AnalyticsBlockHook(
-    targets: TargetSet,
-) : BaseHook(targets) {
+    resolver: TargetResolver,
+) : BaseHook(resolver) {
     override val name = "AnalyticsBlock"
 
     override fun hook(classLoader: ClassLoader) {

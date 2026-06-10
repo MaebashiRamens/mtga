@@ -30,7 +30,7 @@ val hideAdsPatch =
                 )
             }
 
-            // insertAdsIntoFeed: p3 is the feedItemList, returned unchanged skips the merge.
+            // insertAdsIntoFeed: p3 is the feedItemList; returning it unchanged skips the merge.
             adQueue.methodsNamed("c").forEach { method ->
                 method.addInstructions(0, "return-object p3")
             }

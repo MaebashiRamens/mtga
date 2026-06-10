@@ -48,6 +48,8 @@ nix run .#patch-app -- truth-social.apkm out.apk
 
 | versionName | versionCode | base.apk SHA-256 |
 |---|---|---|
+| 1.27.0 | 1258 | `267851a53a8986a42a50dafb23f4666b5c02f5533f4075a9b68fe3d2927836ab` |
+| 1.26.2 | 1256 | `2fa0e3c8dea0967e375a7e7aec135c4bb60ea67c9d6e577010f1496aad291fa3` |
 | 1.26.1 | 1254 | `2e974acac3ec18b1dfc7ccf98c49159896fe391f2ee0d1606581315f4abda158` |
 | 1.24.8 | 1228 | `bcca813e2920602f0a9908240c537dc1d9ee6b6a90213e2b0be03e6458f35c1a` |
 | 1.24.6 | 1226 | `6108f4127e7ec04be40454ab083bfde870f0055ce7e2511e9f730418c2d2cc93` |

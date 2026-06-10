@@ -9,8 +9,8 @@ import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
 // Skips the synchronous execute() variant: faking a non-null Response<T>
-// for the caller is non-trivial. The blocked path returns without invoking
-// Callback.onFailure — Truth Social's ad-fetch coroutine drops the orphan
+// is non-trivial. The blocked path returns without invoking
+// Callback.onFailure; Truth Social's ad-fetch coroutine drops the orphan
 // continuation silently, which matches the intent.
 
 private const val BLOCKED_URL_SUBSTRING = "/truth/ads"

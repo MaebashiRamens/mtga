@@ -4,7 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.view.MotionEvent
 import com.example.mtga.MainHook.Companion.TAG
-import com.example.mtga.common.TargetSet
+import com.example.mtga.common.TargetResolver
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
@@ -12,21 +12,19 @@ import de.robv.android.xposed.XposedHelpers
 /**
  * In-app entry point for MTGA settings.
  *
- * The user wanted a way to launch the MTGA SettingsActivity from inside
- * Truth Social itself rather than only from the launcher. We hook the
- * Activity's `dispatchTouchEvent`: any time the user triple-taps the very
- * top-left corner of the screen (the avatar / drawer icon area) within a
- * short window, we launch SettingsActivity.
+ * Launches the MTGA SettingsActivity from inside Truth Social. The hook on
+ * `dispatchTouchEvent` watches for a triple-tap at the very top-left corner
+ * (the avatar / drawer icon area) within a short window.
  *
  * Choosing the avatar corner is intentional: a single tap opens the drawer
- * (stock behavior, untouched), so two extra rapid taps don't break anything;
- * the drawer is already open by the time the third tap registers. The tap
- * counter resets if the gap is too long or the touch lands outside the
- * trigger zone.
+ * (stock behaviour, untouched), so two more rapid taps don't break anything
+ * — the drawer is already open by the time the third tap registers. The
+ * counter resets when the gap exceeds the window or the touch lands outside
+ * the trigger zone.
  */
 class InAppSettingsHook(
-    targets: TargetSet,
-) : BaseHook(targets) {
+    resolver: TargetResolver,
+) : BaseHook(resolver) {
     override val name = "InAppSettings"
 
     private var tapCount = 0
@@ -64,7 +62,7 @@ class InAppSettingsHook(
     }
 
     private fun isInTriggerZone(event: MotionEvent): Boolean {
-        // top-left ~120dp x 120dp (covers avatar + drawer-icon hit area).
+        // top-left ~120dp x 120dp (avatar + drawer-icon hit area).
         return event.x in 0f..TRIGGER_ZONE_PX && event.y in 0f..TRIGGER_ZONE_PX
     }
 
@@ -90,8 +88,8 @@ class InAppSettingsHook(
     companion object {
         private const val TAP_WINDOW_MS = 600L
 
-        // Top-left zone in pixels. 360 ~ 120dp on a 3x density display, which
-        // is roughly the avatar + small breathing room.
+        // Top-left zone in px. 360 ~ 120dp on a 3x density display — the
+        // avatar plus a little breathing room.
         private const val TRIGGER_ZONE_PX = 360f
     }
 }

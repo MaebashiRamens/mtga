@@ -1,7 +1,7 @@
 package com.example.mtga.hooks
 
 import com.example.mtga.MainHook.Companion.TAG
-import com.example.mtga.common.TargetSet
+import com.example.mtga.common.TargetResolver
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
@@ -10,21 +10,21 @@ import de.robv.android.xposed.XposedHelpers
  * Bypass Play Integrity API checks.
  *
  * Truth Social uses Play Integrity for: CreateAccount, Like, Status,
- * ChatMessage, ReTruth, Reaction. The check is implemented by an OkHttp
- * Interceptor that calls Google's IntegrityManager and adds an `x-tru-assertion`
- * header to the outgoing request.
+ * ChatMessage, ReTruth, Reaction. An OkHttp Interceptor calls Google's
+ * IntegrityManager and adds an `x-tru-assertion` header to the outgoing
+ * request.
  *
- * We make the interceptor pass-through: just call `chain.proceed(chain.request)`
- * directly, never building or attaching the integrity token. The server may or
- * may not accept the request — depends on per-action server policy.
+ * Make the interceptor pass-through: call `chain.proceed(chain.request)`
+ * directly without building or attaching the integrity token. The server
+ * may or may not accept the request — depends on per-action server policy.
  *
  * Truth Social does NOT implement: root detection, Xposed/LSPosed detection,
  * emulator detection, or signature verification (verified via decompiled
  * source scan).
  */
 class IntegrityBypassHook(
-    targets: TargetSet,
-) : BaseHook(targets) {
+    resolver: TargetResolver,
+) : BaseHook(resolver) {
     override val name = "IntegrityBypass"
 
     override fun hook(classLoader: ClassLoader) {

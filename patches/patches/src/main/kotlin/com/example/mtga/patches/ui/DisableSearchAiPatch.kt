@@ -7,8 +7,8 @@ import com.example.mtga.patches.MTGA_TARGET_PACKAGE
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByTypeOrNull
 
-// Calibrated SearchAIUseCase has been emptied in some builds (R8 stripped
-// `invoke`). Silently skip when the class or method is absent.
+// Calibrated SearchAIUseCase is empty on some builds (R8 stripped `invoke`).
+// Silently skip when the class or method is absent.
 
 @Suppress("unused")
 val disableSearchAiPatch =

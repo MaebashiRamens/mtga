@@ -12,8 +12,8 @@ import com.example.mtga.patches.mutableClassByType
 private const val FEED_DESCRIPTOR = "Lcom/truthsocial/app/data/models/feeds/Feed;"
 private const val FEED_ID_METHOD = "i"
 
-// inputReg may share a register with outputReg / arrayList because the
-// input is moved into `save` first.
+// inputReg may share a register with outputReg / arrayList; the input is
+// moved into `save` first.
 private fun filterSmali(
     inputReg: String,
     outputReg: String,
@@ -67,7 +67,8 @@ val hideForYouPatch =
             val repoClass = mutableClassByType(targets.feedsRepository.descriptor)
 
             // p()'s early return-object yields a const-zero null; calling
-            // iterator() there fails verification. Patch only the last.
+            // iterator() there fails verification. Patch only the last
+            // return-object.
             repoClass.methodsNamed("p").forEach { method ->
                 if (method.returnType != "Ljava/util/List;") return@forEach
                 val impl = method.implementation ?: return@forEach

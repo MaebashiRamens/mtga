@@ -16,7 +16,7 @@ private const val RENAMED_PACKAGE = "com.truthsocial.android.app.mtga"
 private const val RENAMED_LABEL = "Truth Social (MTGA)"
 
 // AccountManager.addAccount throws SecurityException when the caller's UID
-// doesn't own the account type, so rewrite the hard-coded account-type
+// doesn't own the account type. Rewrite the hard-coded account-type
 // literals in DEX to match the renamed package.
 @Suppress("unused")
 val renameAccountTypesBytecodePatch =
@@ -81,8 +81,8 @@ val renamePackagePatch =
                 app?.setAttribute("android:label", RENAMED_LABEL)
             }
 
-            // authenticator_type drives AccountAuthenticator at runtime
-            // and must match the bytecode rewrite above.
+            // authenticator_type drives AccountAuthenticator at runtime;
+            // must match the bytecode rewrite above.
             document("res/values/strings.xml").use { document ->
                 val strings = document.getElementsByTagName("string")
                 for (i in 0 until strings.length) {

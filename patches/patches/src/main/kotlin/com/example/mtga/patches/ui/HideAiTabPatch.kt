@@ -28,6 +28,8 @@ val hideAiTabPatch =
 
         execute {
             val targets = mtgaTargets
+            // v1.26.2+ removed the AI tab entirely; the patch is a no-op there.
+            val aiDescriptor = targets.bottomNavAiTab?.descriptor ?: return@execute
             val tabsClass = mutableClassByType(targets.bottomNavTabs.descriptor)
             val clinit =
                 tabsClass.methodsNamed("<clinit>").firstOrNull()
@@ -37,7 +39,6 @@ val hideAiTabPatch =
                 clinit.implementation
                     ?: throw PatchException("${targets.bottomNavTabs.name}.<clinit> has no implementation")
 
-            val aiDescriptor = targets.bottomNavAiTab.descriptor
             val instructions = impl.instructions.toList()
 
             val aiSgetIdx =
@@ -66,7 +67,7 @@ val hideAiTabPatch =
             val newSize = sizeInstr.narrowLiteral - 1
 
             // Collect against pre-removal indices, then replace before
-            // remove so the recorded positions stay valid.
+            // removing so the recorded positions stay valid.
             val indexDecrements = mutableListOf<Pair<Int, String>>()
             for (i in (aiSgetIdx + 3) until instructions.size) {
                 val instr = instructions[i]

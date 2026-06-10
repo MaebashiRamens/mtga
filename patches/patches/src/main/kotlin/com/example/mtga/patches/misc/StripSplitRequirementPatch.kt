@@ -7,7 +7,7 @@ import org.w3c.dom.Element
 
 // Play-AAB builds advertise required splits even when nothing in the
 // missing splits is needed at runtime, so `pm install` of the base alone
-// fails with INSTALL_FAILED_MISSING_SPLIT.
+// fails with INSTALL_FAILED_MISSING_SPLIT. Strip the requirement.
 
 @Suppress("unused")
 val stripSplitRequirementPatch =

@@ -7,9 +7,9 @@ import com.example.mtga.patches.MTGA_TARGET_PACKAGE
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
-// L6.U.d(user) is the smsCountry=="US" geofence; the other helpers (a/c/e/g)
-// AND their feature flag with it, so forcing d() true is the prerequisite
-// for the ForceEnable* patches to actually surface buttons.
+// L6.U.d(user) is the smsCountry=="US" geofence. The other helpers
+// (a/c/e/g) AND their feature flag with it, so forcing d() true is the
+// prerequisite for the ForceEnable* patches to surface buttons.
 
 @Suppress("unused")
 val premiumGeofenceBypassPatch =

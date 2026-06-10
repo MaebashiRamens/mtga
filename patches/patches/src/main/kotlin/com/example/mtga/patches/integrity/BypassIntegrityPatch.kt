@@ -9,7 +9,7 @@ import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
 // p1 is declared `Lwe/s;` (Interceptor.Chain) but the request field only
-// exists on the concrete `LBe/h;`; without the check-cast the verifier
+// exists on the concrete `LBe/h;`. Without the check-cast the verifier
 // rejects the iget with "Reference: we.s not instance of Be.h".
 
 @Suppress("unused")

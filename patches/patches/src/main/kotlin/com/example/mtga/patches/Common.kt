@@ -9,43 +9,42 @@ import com.example.mtga.common.TargetSet
 import com.example.mtga.common.Targets
 
 /**
- * Truth Social package + the calibrated versionNames, both pulled from the
- * shared `:common` registry so adding a new build to `Targets.knownVersions`
- * automatically extends every patch's `compatibleWith()` list.
+ * Truth Social package + calibrated versionNames pulled from the shared
+ * `:common` registry. Adding a new build to `Targets.knownVersions` extends
+ * every patch's `compatibleWith()` list automatically.
  */
 internal const val MTGA_TARGET_PACKAGE = Targets.PACKAGE
 internal val MTGA_COMPATIBLE_VERSIONS: Array<String> get() = Targets.knownVersionNames
 
 /**
- * The [TargetSet] that patches build their smali against. Resolved at
- * patch-COMPILE time, not patch-apply time — `BytecodePatchContext` in
+ * [TargetSet] the patches build their smali against. Resolved at
+ * patch-compile time, not patch-apply time: `BytecodePatchContext` in
  * patcher v22 doesn't expose `packageVersion`, so per-version dispatch
- * inside `execute { }` isn't directly available. The realistic path when
- * a future Truth Social build diverges from the current calibration:
+ * inside `execute { }` isn't available. When a future Truth Social build
+ * diverges:
  *
  *   - All known versions share obfuscated names (current state for
- *     v1.24.6 ↔ v1.24.8): no action needed; the same `.rvp` works for
- *     every entry in `Targets.knownVersions`.
+ *     v1.24.6 ↔ v1.24.8): no action; the same `.rvp` covers every entry
+ *     in `Targets.knownVersions`.
  *
  *   - A future version genuinely renames things: ship a separate `.rvp`
  *     for that major version range (set `MTGA_COMPATIBLE_VERSIONS` to
  *     just the new versions, point this at the new TargetSet).
  *
- *   - The matched-by-content alternative is fingerprints — match
- *     methods by string literals / opcodes / parameter types rather than
- *     by R8-renamed names. Refactor to fingerprints if you want one
- *     `.rvp` to cover divergent obfuscations.
+ *   - Match-by-content alternative: fingerprints (match methods by
+ *     string literals, opcodes, parameter types). Refactor to fingerprints
+ *     to cover divergent obfuscations from one `.rvp`.
  *
  * Pinning to [Targets.latest] keeps the names in lockstep with the LSPosed
- * module's calibration — adding a new entry to `Targets.knownVersions`
- * automatically rebases the patches when its `version` is bumped.
+ * module's calibration; bumping an entry in `Targets.knownVersions`
+ * rebases the patches automatically.
  */
 internal val mtgaTargets: TargetSet get() = Targets.latest
 
 /**
- * Look up a class by its DEX type descriptor (e.g. `"Lac/c;"`) and return a
- * [MutableClassDef]. Throws [PatchException] if the class is missing — patches
- * are calibrated against a specific build, so a missing class is a hard error.
+ * Look up a class by DEX type descriptor (e.g. `"Lac/c;"`). Returns a
+ * [MutableClassDef]; throws [PatchException] if missing (patches are
+ * calibrated against a specific build, so a missing class is a hard error).
  */
 @Suppress("DEPRECATION")
 internal fun BytecodePatchContext.mutableClassByType(type: String): MutableClassDef {
@@ -57,7 +56,7 @@ internal fun BytecodePatchContext.mutableClassByType(type: String): MutableClass
 
 /**
  * Find the [MutableClassDef] by type, or null if missing. Use when a class
- * may legitimately be absent (e.g. SearchAIUseCase if Truth Social drops it).
+ * may legitimately be absent (e.g. SearchAIUseCase when Truth Social drops it).
  */
 @Suppress("DEPRECATION")
 internal fun BytecodePatchContext.mutableClassByTypeOrNull(type: String): MutableClassDef? {

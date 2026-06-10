@@ -10,7 +10,7 @@ import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
 // Pairs with the always-on premiumGeofenceBypassPatch: L6.U.{e,...} AND
-// the user's smsCountry, so geofence stays gating until d() also returns
+// the user's smsCountry, so geofence keeps gating until d() also returns
 // true.
 
 private const val FEATURES_DESCRIPTOR = "Lcom/truthsocial/app/data/models/Features;"
@@ -36,7 +36,7 @@ val forceEnableEditsPatch =
                         it.parameters.joinToString("") { p -> p.type } == FEATURES_CTOR_SIG
                 }
                     ?: throw PatchException("$FEATURES_DESCRIPTOR canonical 8-arg ctor not found")
-            // .locals 0: clobber parameter registers directly — each is
+            // .locals 0: clobber parameter registers directly. Each is
             // copied into a field with no prior transformation.
             canonicalCtor.addInstructions(
                 0,

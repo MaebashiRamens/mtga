@@ -9,8 +9,8 @@ import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
 // resStringHelpCenter is build-pinned to Targets.latest. The resource id can
-// shift across versions; this .rvp will silently skip the wrong sidebar row
-// on a calibrated older build whose id differs.
+// shift across versions; this .rvp silently skips the wrong sidebar row on
+// a calibrated older build whose id differs.
 
 @Suppress("unused")
 val hideHelpCenterPatch =

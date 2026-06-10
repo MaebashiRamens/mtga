@@ -3,43 +3,38 @@ package com.example.mtga.common
 /**
  * Hook / patch coordinates for Truth Social, keyed by app version.
  *
- * R8 minification renames classes/methods on every build, so the names that
- * are right for v1.24.8 are very likely wrong for v1.25.0. This file holds
- * one [TargetSet] per known-tested version. At hook init we look up the
- * current versionCode and pick the matching set; if none matches, the
- * runtime hooks bail out instead of binding to wrong symbols.
+ * R8 renames classes and methods on every build, so v1.24.8 names won't
+ * match v1.25.0. One [TargetSet] per tested version. At hook init we look up
+ * the current versionCode and pick the matching set; on a miss, the runtime
+ * hooks bail rather than bind to wrong symbols.
  *
  * ## Calibration workflow (adding a new version)
  *
  * 1. Drop the apkmirror `.apkm` bundle into the project root.
  * 2. `unzip` it; record `sha256sum base.apk` (goes into [BuildId]).
  * 3. `nix develop --command jadx --no-res -d /tmp/jadx_<v> /tmp/<v>/base.apk`.
- *    The only resource id we need ([resStringHelpCenter]) can be read with
- *    `aapt2 dump resources` instead — `--no-res` is fine for class discovery.
- * 4. For each [TargetSet] field, follow its `HOW TO LOCATE` note to grep the
- *    new tree. Most fields stay identical between minor releases.
+ *    [resStringHelpCenter] can be read with `aapt2 dump resources`; `--no-res`
+ *    is fine for class discovery.
+ * 4. For each [TargetSet] field, follow its `HOW TO LOCATE` note. Most fields
+ *    stay identical between minor releases.
  *
- *    **JADX file-name vs JVM class name**: jadx renames class files when the
- *    original would collide on a case-insensitive filesystem (`e.java` and
+ *    JADX file-name vs JVM class name: jadx renames class files when the
+ *    original would collide on a case-insensitive filesystem (`e.java` vs
  *    `E.java`). The DEX/JVM class name is unchanged — read the
- *    `/* JADX INFO: renamed from: <pkg>.<name> */` marker near the top of
- *    the renamed file. Always feed the *original* DEX name into [ClassTarget],
- *    never jadx's display name (`C1744e`, etc.).
+ *    `/* JADX INFO: renamed from: <pkg>.<name> */` marker near the top.
+ *    Always feed the original DEX name into [ClassTarget], never jadx's
+ *    display name (`C1744e`).
  *
- * 5. Verify each method-name field by inspecting the located class — R8
- *    renames method names too and they can drift independently of their
- *    owning class.
- *
- * 6. Append a new `TargetsV<X_Y_Z>` constant at the bottom and register it
- *    in [knownVersions].
- *
+ * 5. Verify each method-name field. R8 renames methods independently of
+ *    their owning class.
+ * 6. Append a new `TargetsV<X_Y_Z>` constant and register it in [knownVersions].
  * 7. `./gradlew :mod:app:assembleDebug` and `nix run .#build-patches`.
- *    Both must succeed before deploying.
  */
 object Targets {
     const val PACKAGE = "com.truthsocial.android.app"
 
-    val knownVersions: List<TargetSet> = listOf(TargetsV1_26_1, TargetsV1_24_8, TargetsV1_24_6)
+    val knownVersions: List<TargetSet> =
+        listOf(TargetsV1_27_0, TargetsV1_26_2, TargetsV1_26_1, TargetsV1_24_8, TargetsV1_24_6)
 
     val knownVersionNames: Array<String>
         get() = knownVersions.map { it.buildId.versionName }.toTypedArray()
@@ -49,13 +44,41 @@ object Targets {
     fun forVersionName(versionName: String): TargetSet? = knownVersions.firstOrNull { it.buildId.versionName == versionName }
 
     val latest: TargetSet get() = knownVersions.first()
+
+    /**
+     * Look up the TargetSet for a versionCode, falling back to [latest] when
+     * the running build is unknown. [TargetMatch.exact] tells MainHook to use
+     * [StaticResolver] (exact match) or [FallbackResolver] (dynamic discovery
+     * for symbols with stable anchors, static fallback otherwise).
+     */
+    fun forVersionCodeOrLatest(versionCode: Int): TargetMatch {
+        forVersionCode(versionCode)?.let { return TargetMatch(it, exact = true, warning = null) }
+        val fallback = latest
+        return TargetMatch(
+            set = fallback,
+            exact = false,
+            warning =
+                "Unknown versionCode=$versionCode — falling back to " +
+                    "${fallback.buildId.versionName} (${fallback.buildId.versionCode}). " +
+                    "Some hooks may misbehave.",
+        )
+    }
 }
 
+/** Result of [Targets.forVersionCodeOrLatest]. */
+data class TargetMatch(
+    val set: TargetSet,
+    val exact: Boolean,
+    val warning: String?,
+)
+
 /**
- * One TargetSet = a complete map from "thing we want to hook" to "obfuscated
- * name in this specific Truth Social build". Each field carries a HOW TO
- * LOCATE note so future calibration sessions can re-find the symbol on a
- * brand-new APK without re-discovering the anchor strings.
+ * Maps "thing we want to hook" to "obfuscated name in this Truth Social build".
+ * Each field carries a HOW TO LOCATE note so future calibration sessions can
+ * re-find the symbol on a fresh APK without re-discovering anchor strings.
+ *
+ * Defaults are supplied for fields added when v1.26.2 support landed so
+ * existing v1.24.x / v1.26.1 calibrations keep working.
  */
 data class TargetSet(
     val buildId: BuildId,
@@ -63,8 +86,8 @@ data class TargetSet(
     /**
      * OkHttp interceptor that injects the Play Integrity assertion.
      *
-     * HOW TO LOCATE: grep for the literal `"x-tru-assertion"` (the header it
-     * adds). One class hits — confirm by reading its `intercept(chain)` body.
+     * HOW TO LOCATE: grep the literal `"x-tru-assertion"` (the header it
+     * adds). One class hits; confirm by reading its `intercept(chain)` body.
      */
     val integrityInterceptor: ClassTarget,
     /** HOW TO LOCATE: the only method on [integrityInterceptor] returning Object/Response. R8 single-letter (typically `a`). */
@@ -72,17 +95,16 @@ data class TargetSet(
     /**
      * Field on the OkHttp `RealInterceptorChain` impl holding the current Request.
      *
-     * HOW TO LOCATE: in the chain class (`Be.h`-shaped — list of interceptors
-     * + int index), the Request field is the only one whose type is the
-     * obfuscated `okhttp3.Request`. R8 names it by alphabetical position
-     * (5th field → `e`).
+     * HOW TO LOCATE: in the chain class (`Be.h`-shape: list of interceptors +
+     * int index), the Request field is the only one typed as the obfuscated
+     * `okhttp3.Request`. R8 names by alphabetical position (5th field → `e`).
      */
     val chainRequestField: String,
     /** HOW TO LOCATE: in the chain class, the method whose body advances the interceptor index and returns a Response. Usually `b`. */
     val chainProceedMethod: String,
     /**
      * Retrofit's `OkHttpCall`. Retrofit's ProGuard rules keep the original
-     * package + class name on every build. Hard-coded as a sanity-check.
+     * FQN on every build. Hard-coded as a sanity check.
      */
     val retrofitOkHttpCall: ClassTarget,
     /**
@@ -90,145 +112,273 @@ data class TargetSet(
      * [BlockOkHttpAdsPatch] to short-circuit `/truth/ads` requests.
      *
      * HOW TO LOCATE: the only public void method on `OkHttpCall` taking a
-     * single argument typed as `retrofit2.Callback` (itself R8-renamed —
-     * look for the parameter type that has a single non-default method
-     * named `onResponse` or similar). Usually single-letter `l`.
+     * single `retrofit2.Callback` argument (itself R8-renamed; look for the
+     * parameter type whose single non-default method is named `onResponse`).
+     * Usually single-letter `l`.
      */
     val retrofitOkHttpCallEnqueueMethod: String,
     /**
-     * R8-renamed `createRawCall()` analog — builds the `okhttp3.Request`
-     * from `requestFactory.create(args)`. Returns `we.B` (Request).
+     * R8-renamed `createRawCall()` analog. Builds the `okhttp3.Request` from
+     * `requestFactory.create(args)`. Returns `we.B` (Request).
      *
      * HOW TO LOCATE: the only public method on `OkHttpCall` whose return
-     * type is the Request type (`Lwe/B;` shape — a class with a single-
-     * field `<init>(Builder)`). Usually `declared-synchronized` and
-     * usually named `p`.
+     * type is the Request type (`Lwe/B;` shape, a class with a single
+     * `<init>(Builder)`). Usually `declared-synchronized`, usually `p`.
      */
     val retrofitOkHttpCallRequestMethod: String,
     // ---------------------------- Repositories -------------------------------
     /**
-     * `FeedsRepositoryImpl` — methods that take or return `List<Feed>` where
+     * `FeedsRepositoryImpl`. Methods that take or return `List<Feed>` where
      * `Feed = com.truthsocial.app.data.models.feeds.Feed`.
      *
-     * HOW TO LOCATE: grep for that `Feed` literal; narrow to a class with
-     * several `List<Feed>` methods, dependency-injected.
+     * HOW TO LOCATE: grep the `Feed` literal; narrow to a DI'd class with
+     * several `List<Feed>` methods.
      */
     val feedsRepository: ClassTarget,
     /**
-     * `AppStateManagerImpl` — bottom-bar nav + badge counts.
+     * `AppStateManagerImpl`. Bottom-bar nav + badge counts.
      *
-     * HOW TO LOCATE: a class with `c(menuItem)`, `e(menuItem)` and `g(menuItem, int)`
-     * where `g(_, 0)` is called to clear the alerts badge.
+     * HOW TO LOCATE: a class with `c(menuItem)`, `e(menuItem)` and
+     * `g(menuItem, int)` where `g(_, 0)` clears the alerts badge.
      */
     val appStateManager: ClassTarget,
+    /**
+     * Methods on [appStateManager] receiving a `Tab` argument when the user
+     * selects a bottom-bar tab. v1.26.1: `["c","e"]`. v1.26.2: `["b","j"]`.
+     * v1.27.0: `["c","e"]`.
+     */
+    val appStateTabSelectMethods: List<String> = listOf("c", "e"),
+    /**
+     * Method on [appStateManager] taking `(Tab, int)`; clears the
+     * notification badge when called with `(alertsTab, 0)`. v1.26.1: `"g"`.
+     * v1.26.2: `"e"`. v1.27.0: `"d"`.
+     */
+    val appStateClearBadgeMethod: String = "g",
     // ---------------------------- Ads / analytics ----------------------------
     /**
-     * `AdQueueManager` — `b()` (fetchAd) returning Object and `c(...)`
-     * (insertAdsIntoFeed) taking a feed list.
+     * `AdQueueManager`. Historically `b()` (fetchAd) returning Object and
+     * `c(...)` (insertAdsIntoFeed) taking a feed list. v1.26.2+ dropped
+     * `b()` and changed `c()` to a suspend function returning `List<ke.j>`;
+     * the side-effecting writer is now `e()`.
      *
-     * HOW TO LOCATE: grep `/api/v5/truth/ads`; AdQueueManager is DI'd from
-     * the AdsApi consumer. Kotlin metadata explicitly names it
+     * HOW TO LOCATE: grep `/api/v5/truth/ads`. AdQueueManager is DI'd from
+     * the AdsApi consumer. Kotlin metadata names it
      * `com.truthsocial.app.data.api.service.ads.AdQueueManager`.
      */
     val adQueueManager: ClassTarget,
+    /**
+     * Optional fetch-ads method on [adQueueManager]. Null on v1.26.2+ where
+     * `b()` no longer exists and `c()` is the suspend list-fetcher.
+     */
+    val adQueueFetchMethod: String? = "b",
+    /**
+     * Insert/list-ads method on [adQueueManager]. v1.26.1: non-suspend, took
+     * the feed list and returned it. v1.26.2+: suspend, returns `List<ke.j>`
+     * (we replace with empty list).
+     */
+    val adQueueInsertMethod: String = "c",
     /** Sibling of [adQueueManager]. Metadata names it `AdImpressionManager`. */
     val adImpressionManager: ClassTarget,
-    /** HOW TO LOCATE: grep `AppAnalyticsManager` in metadata blocks, or look near Firebase `logEvent` calls. */
+    /**
+     * App-level analytics dispatcher. v1.24.x / v1.26.1: one class with
+     * `void a()`, `void b(String)`, `void c(...events)` on AppAnalyticsManager
+     * itself. v1.26.2+: the outward-facing `AppAnalyticsManager`
+     * (`ld.a` / `od.a`) is a wrapper holding the real dispatcher
+     * (`ld.c` / `od.c`) in its only field; the void methods live on that
+     * inner class. This target is the class whose void methods we no-op.
+     *
+     * HOW TO LOCATE: grep `AppAnalyticsManager` in metadata blocks, then on
+     * v1.26.2+ follow the wrapper to the sole field-typed class with
+     * `void a()` / `void b(String)` / `void c(...)`.
+     */
     val analyticsManager: ClassTarget,
     // ---------------------------- UI / Compose -------------------------------
     /**
-     * Sidebar item renderer — method `j(modifier, icon, textResId, hasDivider, onClick, …)`.
+     * Sidebar item renderer. v1.26.1: `j(modifier, icon, textResId, hasDivider, onClick, …)`.
+     * v1.26.2+: split into `m(modifier, textResId, hasDivider, onClick, …)`
+     * and `n(modifier, vectorIcon, textResId, hasDivider, onClick, …)`.
      *
-     * HOW TO LOCATE: grep [resStringHelpCenter] usage — only the sidebar
-     * item renderer consumes it.
+     * HOW TO LOCATE: grep [resStringHelpCenter] usage; only the sidebar item
+     * renderer consumes it.
      */
     val sidebarItemRenderer: ClassTarget,
     /**
-     * Account drawer screen — gem button + Truth Gems banner methods.
+     * Methods on [sidebarItemRenderer] to inspect for a help-center text
+     * resource argument. v1.26.1: `["j"]`. v1.26.2/v1.27.0: `["m","n"]`.
+     */
+    val sidebarItemMethods: List<String> = listOf("j"),
+    /**
+     * Account drawer screen. Gem button + Truth Gems banner methods.
      *
-     * HOW TO LOCATE: usually same package as [sidebarItemRenderer]. Grep for
-     * `Truth Gems` literal or the Composable whose tree includes the sidebar.
+     * HOW TO LOCATE: usually same package as [sidebarItemRenderer]. Grep
+     * the `Truth Gems` literal or the Composable whose tree includes the
+     * sidebar.
      */
     val accountDrawerScreen: ClassTarget,
     /**
-     * TopAppBar action factory — method `i()` renders the TRUTH+ upsell button.
+     * Methods on [accountDrawerScreen] that render the gem button + Truth Gems
+     * banner. v1.26.1: `["M","b0"]`. v1.26.2/v1.27.0: `["J0","d0"]`.
+     */
+    val accountDrawerGemMethods: List<String> = listOf("M", "b0"),
+    /**
+     * TopAppBar action factory; method renders the TRUTH+ upsell button.
      *
-     * HOW TO LOCATE: grep for navigation to the Truth+ subscription route
-     * (`"truth-plus-modal-bottom-sheet"`) within a top-app-bar Composable
-     * factory. The `i()` method is a small `@Composable` lambda.
+     * HOW TO LOCATE: grep the Truth+ subscription route literal
+     * (`"truth-plus-modal-bottom-sheet"`) inside a top-app-bar Composable
+     * factory. The Composable lambda is a small `i()` method.
      */
     val topAppBarFactory: ClassTarget,
+    /** Method on [topAppBarFactory] that renders the TRUTH+ button. Usually `"i"`. */
+    val topAppBarTruthPlusMethod: String = "i",
     /**
-     * `NavDrawerAvatar` — gem badge `k()` (default zero) and `m(user)` (count).
+     * `NavDrawerAvatar`. Gem badge default-zero (grey gem) and count badge
+     * (blue gem). v1.26.1: `["k","m"]`. v1.26.2/v1.27.0: `["i","j"]`.
      *
      * HOW TO LOCATE: jadx displays the file as `kotlin.AbstractC1695B` due to
-     * a case-insensitive filesystem rename. Grep for `NavDrawerAvatarKt` in
+     * a case-insensitive filesystem rename. Grep `NavDrawerAvatarKt` in
      * metadata, then read the `JADX INFO: renamed from: <pkg>.B` marker for
      * the actual JVM name.
      */
     val navDrawerAvatar: ClassTarget,
+    /** Method names on [navDrawerAvatar] that draw the gem badge. */
+    val navDrawerAvatarBadgeMethods: List<String> = listOf("k", "m"),
     /**
-     * Bottom navigation tabs container — `a()` returns `List<Tab>`.
+     * Bottom navigation tabs container.
      *
-     * HOW TO LOCATE: grep bottom-nav route literals (`"home"`, `"alerts"`,
-     * `"discover"`) within a class whose method returns a list.
+     * v1.26.1 and earlier: instance method `a()` returns `List<Tab>`. Use
+     * [bottomNavTabsListMethod].
+     *
+     * v1.26.2+ (Compose nav rewrite): final class with static fields
+     * `a` and `b`, each a `List<Tab>` singleton. Use
+     * [bottomNavTabsStaticFields].
+     *
+     * HOW TO LOCATE: grep bottom-nav route literals (`"feeds"`, `"alerts"`,
+     * `"discover"`) inside a class whose `<clinit>` builds singleton lists.
      */
     val bottomNavTabs: ClassTarget,
     /**
+     * Instance method on [bottomNavTabs] returning the live `List<Tab>`.
+     * Null on v1.26.2+ where the tab list lives in static fields.
+     */
+    val bottomNavTabsListMethod: String? = "a",
+    /**
+     * Static-field names on [bottomNavTabs] holding `List<Tab>` singletons.
+     * Empty on v1.26.1 and earlier (the list comes from
+     * [bottomNavTabsListMethod] instead).
+     */
+    val bottomNavTabsStaticFields: List<String> = emptyList(),
+    /**
      * Bottom-nav AI-tab subclass.
      *
-     * HOW TO LOCATE: in the Tab base class (sibling of [bottomNavTabs]),
-     * the AI tab references "AI" / "Truth Search". Inner classes encode as
+     * HOW TO LOCATE: in the Tab base (sibling of [bottomNavTabs]), the AI
+     * tab references "AI" / "Truth Search". Inner classes encode as
      * `Outer$Inner` for [ClassTarget].
+     *
+     * Null on v1.26.2+ where the AI tab was removed entirely.
      */
-    val bottomNavAiTab: ClassTarget,
+    val bottomNavAiTab: ClassTarget? = null,
     /** HOW TO LOCATE: same Tab base as [bottomNavAiTab]; the Alerts tab's route is `"alerts"`. */
     val bottomNavAlertsTab: ClassTarget,
     /**
-     * SwipeableRow Composable — `j(modifier, swipeToStartAction, swipeToEndAction, state, content, …)`.
+     * Per-route tab classes used by [BottomBarReorderHook]. Keys are route
+     * strings (`"feeds"`, `"alerts"`); values are the singleton Tab subclass
+     * returning that route.
+     *
+     * Populated for v1.26.2+ where the tab list lives in static fields and
+     * we can reorder by reflection. Empty on older builds.
+     */
+    val bottomNavTabClasses: Map<String, ClassTarget> = emptyMap(),
+    /**
+     * SwipeableRow Composable. v1.26.1: `j(modifier, swipeToStartAction,
+     * swipeToEndAction, state, content, …)`. v1.26.2/v1.27.0 renamed to
+     * `i` / `e` respectively.
      *
      * HOW TO LOCATE: grep `SwipeableRow` in Kotlin metadata.
      */
     val swipeableRow: ClassTarget,
+    /** Method on [swipeableRow] that renders the SwipeableRow Composable. */
+    val swipeableRowMethod: String = "j",
     /**
-     * Truth Search AI use case. **NOT R8-renamed** — Hilt injects by FQN so
-     * the original `com.truthsocial.app.domain.usecase.ai.SearchAIUseCase`
-     * survives. Stable across all builds.
+     * R8-renamed package prefix of the Alerts screen Composables. Used in a
+     * stack-frame match so we only neutralize SwipeableRow when the call
+     * site is on the alerts screen. v1.24.8/v1.26.1: `"R8."`. v1.26.2:
+     * `"A8."`. v1.27.0: `"B8."`.
+     *
+     * HOW TO LOCATE: `find /tmp/jadx_<v>/sources -name "*.java" -exec grep -l "AlertsScreenKt" {} +`,
+     * then take the result's package prefix.
+     */
+    val alertsScreenPackagePrefix: String = "R8.",
+    /**
+     * Top-of-home-feed "live content" / podcast carousel. Introduced in
+     * v1.27.0 under `features.liveContentCarouselEnabled`; doesn't exist on
+     * v1.24.x / v1.26.1 / v1.26.2. Renderer is a static Composable on a file
+     * class in `wd.*` (v1.27.0: `wd.j`).
+     *
+     * Null means the build has no live carousel; the hook silently no-ops
+     * and the toggle is hidden from the UI.
+     */
+    val liveContentCarousel: ClassTarget? = null,
+    /** Composable method on [liveContentCarousel] that renders the block. */
+    val liveContentCarouselMethod: String = "c",
+    /**
+     * The "Ask Perplexity AI" button on the Discover screen (v1.27.0:
+     * `S8.E.p(String text, ImageVector icon, De.a onClick, boolean enabled,
+     * modifier, m, i, i)`). Older builds may host the same button on a
+     * different class; null means the build has no discoverable Perplexity
+     * entry point and the hook no-ops.
+     *
+     * HOW TO LOCATE: grep `R.string.ask_anything` (value is "Ask Perplexity
+     * AI" in v1.27.0). Find the file consuming the resource id, then trace
+     * the Composable call site.
+     */
+    val askPerplexityButton: ClassTarget? = null,
+    /** Composable method on [askPerplexityButton] (v1.27.0: `"p"`). */
+    val askPerplexityButtonMethod: String = "p",
+    /**
+     * Truth Search AI use case. Hilt injects by FQN on v1.24.8 so the
+     * original class survives. v1.26.1+ minifies it (becomes a no-op holder).
      */
     val searchAiUseCase: ClassTarget,
     /**
-     * Premium-feature gate helper — static functions on `TruthSocialUser`:
+     * Premium-feature gate helper. Static functions on `TruthSocialUser`:
      *
-     *   a(user) → editsEnabled
-     *   c(user) → scheduleEnabled
-     *   d(user) → smsCountry == "US" geofence
-     *   e(user) → editsVisible && d(user)
-     *   g(user) → scheduleVisible && d(user)
+     *   editsEnabled / scheduleEnabled / geofence / editsVisible / scheduleVisible
      *
-     * HOW TO LOCATE: grep `smsCountry` literal — the geofence helper is the
-     * only consumer outside the data model itself.
+     * R8-assigned letters drift between builds; see [PremiumGateMethods].
+     *
+     * HOW TO LOCATE: grep the `smsCountry` literal. The geofence helper is
+     * the only consumer outside the data model itself.
      */
     val premiumGateHelper: ClassTarget,
+    /** Method names on [premiumGateHelper] for each gate check. */
+    val premiumGateMethods: PremiumGateMethods =
+        PremiumGateMethods(
+            editsEnabled = "a",
+            scheduleEnabled = "c",
+            geofence = "d",
+            editsVisible = "e",
+            scheduleVisible = "g",
+        ),
     /**
-     * Truth Compose post-action ViewModel — wraps the Schedule click.
+     * Truth Compose post-action ViewModel. Wraps the Schedule click.
      *
      * HOW TO LOCATE: grep Kotlin metadata for `TruthComposeViewModel` or
      * `composer` package paths.
      */
     val composerViewModel: ClassTarget,
     /**
-     * ViewModel method called by the Schedule button — branches into upsell.
+     * ViewModel method called by the Schedule button; branches into upsell.
      *
      * HOW TO LOCATE: in [composerViewModel] metadata, the source parameter
-     * list mentions `publish: Boolean`; the matching R8-renamed name is in
+     * list mentions `publish: Boolean`. The matching R8-renamed name is in
      * the metadata's d2 array.
      */
     val composerScheduleClickMethod: String,
     /**
-     * NavHandler — instance method for `navigate(Route, options)`.
+     * NavHandler. Instance method for `navigate(Route, options)`.
      *
-     * HOW TO LOCATE: grep `"truth-plus-modal-bottom-sheet"` route literal —
-     * the call site is `navHandler.<navigate>(route, options)`.
+     * HOW TO LOCATE: grep the `"truth-plus-modal-bottom-sheet"` route
+     * literal. Call site is `navHandler.<navigate>(route, options)`.
      */
     val navHandler: ClassTarget,
     /** HOW TO LOCATE: from the [navHandler] call-site grep, read the method name. R8 single-letter, usually `d`. */
@@ -238,16 +388,40 @@ data class TargetSet(
      * encode as `Outer$a` for [ClassTarget].
      */
     val truthPlusUpsellRoute: ClassTarget,
-    /** HOW TO LOCATE: grep `"premium-feature-roadblock-dialog"` literal. */
+    /** HOW TO LOCATE: grep the `"premium-feature-roadblock-dialog"` literal. */
     val premiumFeatureRoadblockRoute: ClassTarget,
+    // ---------------------------- Data models --------------------------------
+    /**
+     * `Feed` model class. v1.24.x/v1.26.1: `com.truthsocial.app.data.models.feeds.Feed`.
+     * v1.26.2+: moved to `com.truthsocial.core.data.models.feeds.Feed`.
+     */
+    val feedClass: ClassTarget =
+        ClassTarget("com.truthsocial.app.data.models.feeds.Feed"),
+    /**
+     * `Features` model class. v1.24.x/v1.26.1: `com.truthsocial.app.data.models.Features`.
+     * v1.26.2+: moved to `com.truthsocial.core.data.models.Features`.
+     * v1.26.2 added `predictionsEnabled` (idx 8) and `videoScrollingEnabled` (idx 9).
+     * v1.27.0 additionally added `liveContentCarouselEnabled` (idx 10).
+     * Indices 0–7 (the legacy fields) are stable across all builds.
+     */
+    val featuresClass: ClassTarget =
+        ClassTarget("com.truthsocial.app.data.models.Features"),
     // ---------------------------- Preferences screen -------------------------
     /**
-     * `PreferencesScreen` builder file class — appends sections to the prefs
+     * Preferences-screen injection strategy for this build; see
+     * [PreferencesInjectorKind]. The fields below ([preferencesBuilder],
+     * [preferencesBuilderMethod], [preferencesSection], [preferencesTextRow])
+     * are only consulted under [PreferencesInjectorKind.Legacy]. Modern
+     * builds (v1.26.2+) ignore them.
+     */
+    val preferencesInjector: PreferencesInjectorKind = PreferencesInjectorKind.Legacy,
+    /**
+     * `PreferencesScreen` builder file class. Appends sections to the prefs
      * root.
      *
-     * HOW TO LOCATE: grep `"preferences/all"` (the route) → find the screen
-     * Composable → trace to the helper. The helper is a Kotlin file class
-     * with `abstract` modifier (a static-only utility).
+     * HOW TO LOCATE: grep `"preferences/all"` (the route), find the screen
+     * Composable, trace to the helper. The helper is an `abstract` Kotlin
+     * file class (static-only utility).
      */
     val preferencesBuilder: ClassTarget,
     /**
@@ -258,15 +432,61 @@ data class TargetSet(
      */
     val preferencesBuilderMethod: String,
     /**
-     * Section type — 2 SharedPreferences + String<title> + boolean +
+     * Section type: 2 SharedPreferences + String<title> + boolean +
      * ArrayList<items>.
      *
-     * The hook uses **type-based field discovery**, so individual field
-     * names within this class don't need to be tracked separately.
+     * The hook uses type-based field discovery, so individual field names
+     * within this class don't need to be tracked separately.
      */
     val preferencesSection: ClassTarget,
-    /** Clickable text row — same package as [preferencesSection], wider field set + `Mc.a` click callback. Type-based field discovery. */
+    /** Clickable text row. Same package as [preferencesSection], wider field set + `Mc.a` click callback. Type-based field discovery. */
     val preferencesTextRow: ClassTarget,
+    // --- Modern (v1.26.2+) preferences screen --------------------------------
+    /**
+     * File-class hosting the static `p()` that builds the Preferences root's
+     * section list. Hooking `p()` after the fact lets us append an "MTGA
+     * Settings" section to the ArrayList field on the root.
+     *
+     * v1.26.2: `na.j` (jadx file `na/j.java`).
+     * v1.27.0: `oa.k` (jadx file `oa/k.java`).
+     * Null on Legacy builds; only consulted by [PreferencesInjectorKind.Modern].
+     *
+     * HOW TO LOCATE: grep references to the route-id constant `U.a.f<N>`
+     * (the `preferences/all` route subclass) inside `oa/` / `na/`. The file
+     * that builds the screen also exposes a top-level `p(<root>, …)`
+     * mutating an ArrayList field on its first argument.
+     */
+    val modernPreferencesBuilder: ClassTarget? = null,
+    /** Method name on [modernPreferencesBuilder]. Typically `"p"`. */
+    val modernPreferencesBuilderMethod: String = "p",
+    /**
+     * Screen-root data class. First field "settings" SharedPreferences, second
+     * "user" SharedPreferences, third `ArrayList<Section>`.
+     *
+     * v1.26.2: `Ud.g`. v1.27.0: `Zd.f`. Null on Legacy.
+     */
+    val modernPreferencesRoot: ClassTarget? = null,
+    /**
+     * Section data class. `(SharedPreferences, SharedPreferences)` ctor, 3rd
+     * field `String title`, 5th field `ArrayList<Item>`.
+     *
+     * v1.26.2: `Ud.b`. v1.27.0: `Zd.b`. Null on Legacy.
+     */
+    val modernPreferencesSection: ClassTarget? = null,
+    /**
+     * Text-row data class. `(SharedPreferences, SharedPreferences, <h0/s0>)`
+     * ctor, 3rd field `String title`, 4th `String subtitle`, last
+     * `Function0 onClick`.
+     *
+     * v1.26.2: `Ud.d`. v1.27.0: `Zd.d`. Null on Legacy.
+     */
+    val modernPreferencesTextRow: ClassTarget? = null,
+    /**
+     * R8 rename of `kotlin.jvm.functions.Function0` used by the Modern
+     * Text-row onClick field. v1.26.2: `ye.a` (InterfaceC5755a). v1.27.0:
+     * `De.a`. Null on Legacy builds (they reuse [kotlinFunction0]).
+     */
+    val modernKotlinFunction0: ClassTarget? = null,
     /**
      * R8 rename of `kotlin.jvm.functions.Function0`. The `Mc` package
      * contains all `Function0..22` renames; `a` is reliably Function0
@@ -274,14 +494,14 @@ data class TargetSet(
      */
     val kotlinFunction0: ClassTarget,
     /**
-     * R8 rename of `kotlin.Unit` — singleton field whose `toString` returns
+     * R8 rename of `kotlin.Unit`. Singleton field whose `toString` returns
      * `"kotlin.Unit"`, lives in the `yc` Kotlin-stdlib runtime package.
      */
     val kotlinUnit: ClassTarget,
     // ---------------------------- Resources ----------------------------------
     /**
-     * `R.string.help_center` numeric id. Resource ids are stable across an
-     * R8 minify but can shift between releases when other resources are added.
+     * `R.string.help_center` numeric id. Resource ids are stable across R8
+     * minify but can shift between releases when other resources are added.
      *
      * HOW TO LOCATE: grep `R.java` for `help_center`, or
      * `aapt2 dump resources base.apk | grep string/help_center`.
@@ -289,7 +509,42 @@ data class TargetSet(
     val resStringHelpCenter: Int,
 )
 
-/** An obfuscated class name. No fallbacks: a wrong name should fail loudly. */
+/**
+ * Strategy for injecting the "MTGA Settings" row into Truth Social's
+ * Preferences screen. The architecture changed in v1.26.2:
+ *
+ *  - [Legacy]: v1.24.6 / v1.24.8 / v1.26.1. The screen is built by a single
+ *    static helper (`sa.j.p(prefsRoot, …)`) appending `ic.b` sections; each
+ *    section holds `ic.d` rows with an `Mc.a` (Function0) click callback. We
+ *    hook `p`, append our own section, set the click to launch
+ *    [com.example.mtga.SettingsActivity].
+ *
+ *  - [Modern]: v1.26.2 / v1.27.0. The `ic.b` / `ic.d` data classes are gone;
+ *    the screen is composed via Compose-only Composables under `oa.` / `na.`
+ *    with a different section/item model
+ *    ([com.example.mtga.hooks.preferences.ModernPreferencesInjector]). The
+ *    triple-tap fallback from [com.example.mtga.hooks.InAppSettingsHook]
+ *    remains active so a calibration mismatch can't strand the user.
+ */
+enum class PreferencesInjectorKind {
+    Legacy,
+    Modern,
+}
+
+data class PremiumGateMethods(
+    /** `boolean foo(TruthSocialUser)` returning `features.editsEnabled`. */
+    val editsEnabled: String,
+    /** `boolean foo(TruthSocialUser)` returning `features.scheduleEnabled`. */
+    val scheduleEnabled: String,
+    /** `private boolean foo(TruthSocialUser)` returning `smsCountry == "US"`. */
+    val geofence: String,
+    /** `boolean foo(TruthSocialUser)` returning `editsVisible && geofence`. */
+    val editsVisible: String,
+    /** `boolean foo(TruthSocialUser)` returning `scheduleVisible && geofence`. */
+    val scheduleVisible: String,
+)
+
+/** An obfuscated class name. No fallbacks; a wrong name should fail loudly. */
 data class ClassTarget(
     val name: String,
 ) {
@@ -305,13 +560,13 @@ data class BuildId(
     val baseApkSha256: String,
 )
 
-// v1.26.1 R8 hashing is mostly stable against v1.24.8 — the obfuscated names
-// for hooks/patches are identical except:
+// v1.26.1 R8 hashing is mostly stable against v1.24.8. Obfuscated names for
+// hooks/patches are identical except:
 //   - searchAiUseCase: the FQN `com.truthsocial.app.domain.usecase.ai.SearchAIUseCase`
-//     no longer survives R8; the class is now renamed to `x8.l` (the use case
-//     body was emptied to a no-op holder, so DisableSearchAiPatch becomes a
-//     defensive no-op, and the runtime hook silently fails — Truth Search AI
-//     label blanking still works via `blankStringResource`).
+//     no longer survives R8; the class is renamed to `x8.l` (body emptied to
+//     a no-op holder, so DisableSearchAiPatch becomes defensive, and the
+//     runtime hook silently fails — Truth Search AI label blanking still
+//     works via `blankStringResource`).
 //   - resStringHelpCenter: shifted by 3 ids as new string resources were
 //     inserted above it.
 private val TargetsV1_26_1 =
@@ -357,6 +612,7 @@ private val TargetsV1_26_1 =
         kotlinFunction0 = ClassTarget("Mc.a"),
         kotlinUnit = ClassTarget("yc.v"),
         resStringHelpCenter = 0x7f120255,
+        // New fields all take their data-class defaults, which match v1.26.1.
     )
 
 private val TargetsV1_24_8 =
@@ -407,8 +663,8 @@ private val TargetsV1_24_8 =
 // v1.24.6 obfuscated names are identical to v1.24.8 — R8 hashing was stable
 // between these releases. Registered separately so `forVersionCode` matches
 // the running APK exactly and any future drift is caught loudly. Not
-// deploy-tested (the rooted AVD has v1.24.8 installed and Android does not
-// allow downgrading); verified at compile time and via jadx symbol equivalence.
+// deploy-tested (the rooted AVD has v1.24.8 installed and Android disallows
+// downgrades); verified at compile time and via jadx symbol equivalence.
 private val TargetsV1_24_6 =
     TargetSet(
         buildId =
@@ -452,4 +708,244 @@ private val TargetsV1_24_6 =
         kotlinFunction0 = ClassTarget("Mc.a"),
         kotlinUnit = ClassTarget("yc.v"),
         resStringHelpCenter = 0x7f120252,
+    )
+
+// v1.24.8/v1.26.1 share `R8.*` for the alerts screen package and Legacy
+// preferences injector — no new fields need overriding. Defaults for
+// alertsScreenPackagePrefix = "R8." and Modern-only fields = null are
+// correct for these builds.
+
+// v1.26.2 churn:
+//   - Compose Navigation rewrite: bottom-nav tabs moved from `C6.g.a()` to
+//     static fields on `Zc.j` (predictions list `a`, chats list `b`). The
+//     AI tab was removed entirely — `bottomNavAiTab` is null. New tab
+//     classes live as `Zc.c..h` keyed by route id.
+//   - `Feed` / `Features` data models moved from `com.truthsocial.app` to
+//     `com.truthsocial.core`. `Features` gained `predictionsEnabled` (idx 8)
+//     and `videoScrollingEnabled` (idx 9); indices 0–7 unchanged.
+//   - AdQueueManager refactor: dropped `b()` (fetchAd). `c()` is now a
+//     suspend function returning `List<? extends ke.j>` (we replace with
+//     empty list); `e(timelineId, adIndexes, zone, maxListSize, indexOffset)`
+//     is the void writer (we no-op).
+//   - AppStateManagerImpl tab-select methods drifted from `c/e` to `b/j`;
+//     clear-badge method from `g` to `e`.
+//   - Sidebar item renderer split from a single `j()` into `m()` + `n()`.
+//   - NavDrawerAvatar gem badge methods renamed `k/m` → `i/j`.
+//   - Account drawer gem methods renamed `M/b0` → `J0/d0`.
+//   - `preferencesBuilder`, `composerViewModel`, `kotlinFunction0`,
+//     `kotlinUnit` not re-verified for v1.26.2 (low priority for the
+//     features that consume them). Values inherited from v1.26.1 — may be
+//     wrong; the matching hooks silently no-op if so.
+private val TargetsV1_26_2 =
+    TargetSet(
+        buildId =
+            BuildId(
+                versionName = "1.26.2",
+                versionCode = 1256,
+                baseApkSha256 = "2fa0e3c8dea0967e375a7e7aec135c4bb60ea67c9d6e577010f1496aad291fa3",
+            ),
+        integrityInterceptor = ClassTarget("H6.f"),
+        integrityInterceptMethod = "a",
+        // og.g is the new chain class (renamed from Be.h in v1.26.1). Field
+        // and method letters are stable.
+        chainRequestField = "e",
+        chainProceedMethod = "b",
+        retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
+        retrofitOkHttpCallEnqueueMethod = "l",
+        retrofitOkHttpCallRequestMethod = "p",
+        feedsRepository = ClassTarget("O7.i"),
+        appStateManager = ClassTarget("G6.a"),
+        appStateTabSelectMethods = listOf("b", "j"),
+        appStateClearBadgeMethod = "e",
+        adQueueManager = ClassTarget("i7.e"),
+        adQueueFetchMethod = null, // b() no longer exists
+        adQueueInsertMethod = "c", // suspend, returns List<ke.j>
+        adImpressionManager = ClassTarget("i7.b"),
+        // `ld.a` is a wrapper holding a `ld.c` field; `ld.c` carries the
+        // void analytics-dispatch methods.
+        analyticsManager = ClassTarget("ld.c"),
+        sidebarItemRenderer = ClassTarget("y6.c"),
+        sidebarItemMethods = listOf("m", "n"),
+        accountDrawerScreen = ClassTarget("y6.k"),
+        // Only the NonPremiumTruthGemsBannerRow (`d0`). The drawer-header
+        // Composable (`J0`) was previously listed but renders the avatar +
+        // display name + follower/following counts as well as the gems
+        // icon; DO_NOTHING wiped the whole header. The gem badge on the
+        // avatar itself is still suppressed via [navDrawerAvatar]
+        // (`Cc.p.i` / `Cc.p.j`).
+        accountDrawerGemMethods = listOf("d0"),
+        // v1.26.2: `Ta.e` (jadx `C1623e.java`) is `FeedsTopBarContentKt`,
+        // the Composable rendering the TRUTH+ icon action via
+        // `i(v0 CenterAlignedTopAppBar, m, i)`. DO_NOTHING hides only that
+        // single action.
+        //
+        // `lb.v` exists too but is the modal shown when the button is
+        // tapped (onCloseClicked / onStartWatchingClicked), not the icon.
+        topAppBarFactory = ClassTarget("Ta.e"),
+        topAppBarTruthPlusMethod = "i",
+        navDrawerAvatar = ClassTarget("Cc.p"),
+        navDrawerAvatarBadgeMethods = listOf("i", "j"),
+        bottomNavTabs = ClassTarget("Zc.j"),
+        bottomNavTabsListMethod = null,
+        bottomNavTabsStaticFields = listOf("a", "b"),
+        bottomNavAiTab = null, // AI tab removed in v1.26.2
+        bottomNavAlertsTab = ClassTarget("Zc.c"),
+        bottomNavTabClasses =
+            mapOf(
+                "alerts" to ClassTarget("Zc.c"),
+                "discover" to ClassTarget("Zc.d"),
+                "groups" to ClassTarget("Zc.e"),
+                "feeds" to ClassTarget("Zc.f"),
+                "chats" to ClassTarget("Zc.g"),
+                "predictions" to ClassTarget("Zc.h"),
+            ),
+        swipeableRow = ClassTarget("Xg.b"),
+        swipeableRowMethod = "i",
+        alertsScreenPackagePrefix = "A8.",
+        // v1.26.2: SearchAIUseCase Hilt factory's newInstance() returns `f8.l`.
+        searchAiUseCase = ClassTarget("f8.l"),
+        premiumGateHelper = ClassTarget("D6.C"),
+        premiumGateMethods =
+            PremiumGateMethods(
+                editsEnabled = "a",
+                scheduleEnabled = "c",
+                geofence = "d",
+                editsVisible = "e",
+                scheduleVisible = "g",
+            ),
+        // Inherited from v1.26.1; may be wrong.
+        composerViewModel = ClassTarget("db.P"),
+        composerScheduleClickMethod = "x1",
+        navHandler = ClassTarget("Rb.s"),
+        navHandlerNavigateMethod = "d",
+        truthPlusUpsellRoute = ClassTarget("Tb.M\$a"),
+        premiumFeatureRoadblockRoute = ClassTarget("Tb.B\$a"),
+        feedClass = ClassTarget("com.truthsocial.core.data.models.feeds.Feed"),
+        featuresClass = ClassTarget("com.truthsocial.core.data.models.Features"),
+        // Preferences screen rewritten. Legacy `ic.b`/`ic.d` injection no
+        // longer applies. Modern injector targets `na.j.p(Ud.g, …)` and
+        // appends an MTGA section to the screen root's ArrayList.
+        preferencesInjector = PreferencesInjectorKind.Modern,
+        // Below five fields are unused on Modern but kept populated so the
+        // data class stays uniform; values inherited from v1.26.1.
+        preferencesBuilder = ClassTarget("sa.j"),
+        preferencesBuilderMethod = "p",
+        preferencesSection = ClassTarget("ic.b"),
+        preferencesTextRow = ClassTarget("ic.d"),
+        kotlinFunction0 = ClassTarget("Mc.a"),
+        kotlinUnit = ClassTarget("yc.v"),
+        modernPreferencesBuilder = ClassTarget("na.j"),
+        modernPreferencesBuilderMethod = "p",
+        modernPreferencesRoot = ClassTarget("Ud.g"),
+        modernPreferencesSection = ClassTarget("Ud.b"),
+        modernPreferencesTextRow = ClassTarget("Ud.d"),
+        modernKotlinFunction0 = ClassTarget("ye.a"),
+        resStringHelpCenter = 0x7f1202be,
+    )
+
+// v1.27.0 — best-effort calibration. Same structural churn as v1.26.2 with a
+// one-package-letter shift across the board. Several low-priority fields
+// inherited from v1.26.2 / v1.26.1 are unverified.
+private val TargetsV1_27_0 =
+    TargetSet(
+        buildId =
+            BuildId(
+                versionName = "1.27.0",
+                versionCode = 1258,
+                baseApkSha256 = "267851a53a8986a42a50dafb23f4666b5c02f5533f4075a9b68fe3d2927836ab",
+            ),
+        integrityInterceptor = ClassTarget("I6.f"),
+        integrityInterceptMethod = "a",
+        // tg.g is the v1.27 chain class.
+        chainRequestField = "e",
+        chainProceedMethod = "b",
+        retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
+        retrofitOkHttpCallEnqueueMethod = "u",
+        retrofitOkHttpCallRequestMethod = "G",
+        // Inherited from v1.26.2; feeds repo class shift not re-verified for v1.27.
+        feedsRepository = ClassTarget("P7.i"),
+        appStateManager = ClassTarget("H6.a"),
+        appStateTabSelectMethods = listOf("c", "e"),
+        appStateClearBadgeMethod = "d",
+        adQueueManager = ClassTarget("j7.e"),
+        adQueueFetchMethod = null,
+        adQueueInsertMethod = "c",
+        adImpressionManager = ClassTarget("j7.b"),
+        // v1.27.0 mirrors v1.26.2's wrapper layout: `od.a` holds an `od.c`
+        // field, `od.c` carries the void analytics dispatch methods.
+        analyticsManager = ClassTarget("od.c"),
+        // Inherited from v1.26.2; methods m/n are the same shape.
+        sidebarItemRenderer = ClassTarget("z6.c"),
+        sidebarItemMethods = listOf("m", "n"),
+        accountDrawerScreen = ClassTarget("z6.j"),
+        // See v1.26.2 note above: J0 is the full drawer header, not a
+        // gem-only Composable. Leaving it out keeps the follower/following
+        // counts visible.
+        accountDrawerGemMethods = listOf("d0"),
+        // See v1.26.2 note above: `Ua.e` (jadx `C1630e.java`) is the icon
+        // factory; `mb.v` is the modal.
+        topAppBarFactory = ClassTarget("Ua.e"),
+        topAppBarTruthPlusMethod = "i",
+        navDrawerAvatar = ClassTarget("Fc.p"),
+        navDrawerAvatarBadgeMethods = listOf("i", "j"),
+        bottomNavTabs = ClassTarget("cd.j"),
+        bottomNavTabsListMethod = null,
+        bottomNavTabsStaticFields = listOf("a", "b"),
+        bottomNavAiTab = null,
+        bottomNavAlertsTab = ClassTarget("cd.c"),
+        bottomNavTabClasses =
+            mapOf(
+                "alerts" to ClassTarget("cd.c"),
+                "discover" to ClassTarget("cd.d"),
+                "groups" to ClassTarget("cd.e"),
+                "feeds" to ClassTarget("cd.f"),
+                "chats" to ClassTarget("cd.g"),
+                "predictions" to ClassTarget("cd.h"),
+            ),
+        swipeableRow = ClassTarget("t2.a"),
+        swipeableRowMethod = "e",
+        alertsScreenPackagePrefix = "B8.",
+        askPerplexityButton = ClassTarget("S8.E"),
+        askPerplexityButtonMethod = "p",
+        // v1.27.0: SearchAIUseCase Hilt factory's newInstance() returns `g8.l`.
+        // The class is a no-op holder, so the runtime invoke()-hook has
+        // nothing to neutralize, but pointing the field at the real class
+        // future-proofs against the FQN reappearing on a later build.
+        searchAiUseCase = ClassTarget("g8.l"),
+        premiumGateHelper = ClassTarget("E6.C"),
+        premiumGateMethods =
+            PremiumGateMethods(
+                editsEnabled = "a",
+                scheduleEnabled = "d",
+                geofence = "e",
+                editsVisible = "f",
+                scheduleVisible = "h",
+            ),
+        // v1.27.0: TruthComposerViewModel is `ab.Z` per its Hilt _Factory;
+        // publish/schedule entrypoint is `P1(boolean publish, Continuation)`.
+        // Not read by any current hook but kept calibrated for future use.
+        composerViewModel = ClassTarget("ab.Z"),
+        composerScheduleClickMethod = "P1",
+        navHandler = ClassTarget("Sb.s"),
+        navHandlerNavigateMethod = "d",
+        truthPlusUpsellRoute = ClassTarget("Ub.M\$a"),
+        premiumFeatureRoadblockRoute = ClassTarget("Ub.B\$a"),
+        feedClass = ClassTarget("com.truthsocial.core.data.models.feeds.Feed"),
+        featuresClass = ClassTarget("com.truthsocial.core.data.models.Features"),
+        // Preferences screen rewritten. Modern injector targets
+        // `oa.k.p(Zd.f, …)` and appends an MTGA section.
+        preferencesInjector = PreferencesInjectorKind.Modern,
+        preferencesBuilder = ClassTarget("sa.j"),
+        preferencesBuilderMethod = "p",
+        preferencesSection = ClassTarget("ic.b"),
+        preferencesTextRow = ClassTarget("ic.d"),
+        kotlinFunction0 = ClassTarget("Mc.a"),
+        kotlinUnit = ClassTarget("yc.v"),
+        modernPreferencesBuilder = ClassTarget("oa.k"),
+        modernPreferencesBuilderMethod = "p",
+        modernPreferencesRoot = ClassTarget("Zd.f"),
+        modernPreferencesSection = ClassTarget("Zd.b"),
+        modernPreferencesTextRow = ClassTarget("Zd.d"),
+        modernKotlinFunction0 = ClassTarget("De.a"),
+        resStringHelpCenter = 0x7f1202c4,
     )
