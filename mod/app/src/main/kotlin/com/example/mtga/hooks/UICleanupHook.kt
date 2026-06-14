@@ -25,14 +25,138 @@ class UICleanupHook(
     override val name = "UICleanup"
 
     override fun hook(classLoader: ClassLoader) {
-        if (Settings.isOn(SettingKeys.HideForYou)) hookForYouTab(classLoader)
-        if (Settings.isOn(SettingKeys.HideHelpCenter)) hookHelpCenter(classLoader)
-        if (Settings.isOn(SettingKeys.HideTruthGems)) hookTruthGems(classLoader)
-        if (Settings.isOn(SettingKeys.HideTruthPlus)) hookTruthPlusButton(classLoader)
-        if (Settings.isOn(SettingKeys.HideAiTab)) hookBottomBarAiTab(classLoader)
-        if (Settings.isOn(SettingKeys.DisableSearchAi)) hookSearchAI(classLoader)
-        if (Settings.isOn(SettingKeys.DisableAlertSwipe)) hookDismissAlert(classLoader)
-        if (Settings.isOn(SettingKeys.BlockTruthPlusUpsell)) hookBlockTruthPlusUpsell(classLoader)
+        // Each sub-hook is isolated so one ClassNotFound (e.g. from a
+        // missed R8 rename) doesn't strand the rest of the pipeline.
+        runSubHook("HideForYou", SettingKeys.HideForYou, classLoader, ::hookForYouTab)
+        runSubHook("HideHelpCenter", SettingKeys.HideHelpCenter, classLoader, ::hookHelpCenter)
+        runSubHook("HideTruthGems", SettingKeys.HideTruthGems, classLoader, ::hookTruthGems)
+        runSubHook("HideTruthPlus", SettingKeys.HideTruthPlus, classLoader, ::hookTruthPlusButton)
+        runSubHook("HideAiTab", SettingKeys.HideAiTab, classLoader, ::hookBottomBarAiTab)
+        runSubHook("DisableSearchAi", SettingKeys.DisableSearchAi, classLoader, ::hookSearchAI)
+        runSubHook("DisableAlertSwipe", SettingKeys.DisableAlertSwipe, classLoader, ::hookDismissAlert)
+        runSubHook("BlockTruthPlusUpsell", SettingKeys.BlockTruthPlusUpsell, classLoader, ::hookBlockTruthPlusUpsell)
+        runSubHook("HideTopBannerAd", SettingKeys.HideTopBannerAd, classLoader, ::hookEmbeddedAnnouncement)
+        runSubHook("HideLiveCarousel", SettingKeys.HideLiveCarousel, classLoader, ::hookLiveCarousel)
+    }
+
+    private fun runSubHook(
+        label: String,
+        key: String,
+        classLoader: ClassLoader,
+        action: (ClassLoader) -> Unit,
+    ) {
+        if (!Settings.isOn(key)) return
+        try {
+            action(classLoader)
+        } catch (t: Throwable) {
+            XposedBridge.log("[$TAG] $label sub-hook failed: ${t.message}")
+        }
+    }
+
+    /**
+     * Hide the home-feed top sponsored banner. Three distinct renderers
+     * ride this toggle:
+     *  - [TargetSet.embeddedAnnouncement] — detail-screen path only.
+     *  - [TargetSet.nonNativeAdRenderer] — `FeedItemType.NonNativeAd`
+     *    items in the home feed.
+     *  - [TargetSet.homeAnnouncementRenderer] — the actual UFC banner
+     *    renderer dispatched as `FeedItemType.AnnouncementItem`.
+     */
+    private fun hookEmbeddedAnnouncement(classLoader: ClassLoader) {
+        targets.embeddedAnnouncement?.let { target ->
+            val cls =
+                try {
+                    XposedHelpers.findClass(target.name, classLoader)
+                } catch (t: Throwable) {
+                    XposedBridge.log("[$TAG] EmbeddedAnnouncement class missing (${target.name}): ${t.message}")
+                    null
+                }
+            if (cls != null) {
+                val killed = noopAllComposables(cls)
+                XposedBridge.log("[$TAG] EmbeddedAnnouncementCard suppressed (${target.name}, $killed methods)")
+            }
+        }
+        targets.nonNativeAdRenderer?.let { target ->
+            val cls =
+                try {
+                    XposedHelpers.findClass(target.name, classLoader)
+                } catch (t: Throwable) {
+                    XposedBridge.log("[$TAG] AdView class missing (${target.name}): ${t.message}")
+                    null
+                }
+            if (cls != null) {
+                val killed = noopAllComposables(cls)
+                XposedBridge.log("[$TAG] AdView (NonNativeAd) suppressed (${target.name}, $killed methods)")
+            }
+        }
+        targets.homeAnnouncementRenderer?.let { target ->
+            val cls =
+                try {
+                    XposedHelpers.findClass(target.name, classLoader)
+                } catch (t: Throwable) {
+                    XposedBridge.log("[$TAG] Announcement (home) class missing (${target.name}): ${t.message}")
+                    null
+                }
+            if (cls != null) {
+                val killed = noopAllComposables(cls)
+                XposedBridge.log("[$TAG] Announcement (home feed) suppressed (${target.name}, $killed methods)")
+            }
+        }
+    }
+
+    private fun hookLiveCarousel(classLoader: ClassLoader) {
+        val target = targets.liveContentCarousel ?: return
+        val cls =
+            try {
+                XposedHelpers.findClass(target.name, classLoader)
+            } catch (t: Throwable) {
+                XposedBridge.log("[$TAG] LiveContentCarousel class missing (${target.name}): ${t.message}")
+                return
+            }
+        // Drop every public Composable on the file class — sub-Composables
+        // (header, card, overlay) get mounted independently by the parent
+        // Compose tree, so suppressing only the main entry leaves
+        // visible fragments.
+        val killed = noopAllComposables(cls)
+        XposedBridge.log("[$TAG] Live content carousel suppressed (${target.name}, $killed methods)")
+
+        for (extra in targets.extraLiveRenderers) {
+            val extraCls =
+                try {
+                    XposedHelpers.findClass(extra.name, classLoader)
+                } catch (t: Throwable) {
+                    XposedBridge.log("[$TAG] extra live class missing (${extra.name}): ${t.message}")
+                    continue
+                }
+            val extraKilled = noopAllComposables(extraCls)
+            XposedBridge.log("[$TAG] extra live renderer suppressed (${extra.name}, $extraKilled methods)")
+        }
+    }
+
+    /**
+     * Hook every method on [cls] whose shape matches a public Composable:
+     * returns Unit and takes an `androidx.compose.runtime.Composer` as one
+     * of its parameters. Picks up overloaded entry points and the synthetic
+     * continuation variants Compose generates without us having to track
+     * letter-by-letter names per build.
+     */
+    private fun noopAllComposables(cls: Class<*>): Int {
+        var count = 0
+        for (m in cls.declaredMethods) {
+            if (!java.lang.reflect.Modifier.isStatic(m.modifiers)) continue
+            if (m.returnType != Void.TYPE) continue
+            val hasComposer =
+                m.parameterTypes.any { p ->
+                    p.name.startsWith("androidx.compose.runtime.") ||
+                        p.name.matches(COMPOSER_PACKAGE_REGEX)
+                }
+            if (!hasComposer) continue
+            runCatching {
+                XposedBridge.hookMethod(m, XC_MethodReplacement.DO_NOTHING)
+                count++
+            }
+        }
+        return count
     }
 
     /**
@@ -434,5 +558,12 @@ class UICleanupHook(
                 }
             },
         )
+    }
+
+    private companion object {
+        // R8 collapses `androidx.compose.runtime.*` into a single
+        // `<letter>0` top-level package per release (drifts between
+        // builds: `s0` on v1.24.10, `v0` on v1.27.x).
+        private val COMPOSER_PACKAGE_REGEX = Regex("""^[a-z]0\..+""")
     }
 }
