@@ -22,6 +22,7 @@ import com.example.mtga.hooks.NotificationBadgeFixHook
 import com.example.mtga.hooks.OkHttpAdInterceptorHook
 import com.example.mtga.hooks.TruthSocialPreferencesHook
 import com.example.mtga.hooks.UICleanupHook
+import com.example.mtga.hooks.VersionSuffixHook
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -101,6 +102,7 @@ class MainHook : IXposedHookLoadPackage {
                 UICleanupHook(resolver) to null, // checks per-feature toggles internally
                 NotificationBadgeFixHook(resolver) to SettingKeys.ClearAlertBadge,
                 BottomBarReorderHook(resolver) to SettingKeys.ReorderBottomBar,
+                VersionSuffixHook(resolver) to SettingKeys.AppendMtgaSuffix,
             )
 
         for ((hook, gate) in hooks) {
