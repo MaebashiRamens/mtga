@@ -13,6 +13,12 @@ import com.example.mtga.patches.MTGA_TARGET_PACKAGE
 
 private const val SUFFIX = "-mtga-patched"
 
+private val KNOWN_VERSION_NAMES: Set<String>
+    get() = Targets.knownVersionNames.toSet()
+
+private fun isUnpatchedKnownVersion(literal: String): Boolean =
+    literal in KNOWN_VERSION_NAMES && !literal.endsWith(SUFFIX)
+
 // BuildConfig.VERSION_NAME is a compile-time constant so javac inlines the
 // literal at every call site. A manifest-only rewrite wouldn't reach the
 // AppBuildInfo path that backs the About screen.
@@ -22,9 +28,6 @@ val mtgaPatchedSuffixBytecodePatch =
         compatibleWith(MTGA_TARGET_PACKAGE(*MTGA_COMPATIBLE_VERSIONS))
 
         execute {
-            val versionName = Targets.latest.buildId.versionName
-            val patched = "$versionName$SUFFIX"
-
             for (classDef in classDefs.toList()) {
                 val mutable = classDefs.getOrReplaceMutable(classDef)
                 for (method in mutable.methods) {
@@ -34,9 +37,9 @@ val mtgaPatchedSuffixBytecodePatch =
                         if (instr.opcode != Opcode.CONST_STRING && instr.opcode != Opcode.CONST_STRING_JUMBO) return@forEachIndexed
                         val ref = (instr as? ReferenceInstruction)?.reference as? StringReference
                             ?: return@forEachIndexed
-                        if (ref.string != versionName) return@forEachIndexed
+                        if (!isUnpatchedKnownVersion(ref.string)) return@forEachIndexed
                         val reg = (instr as OneRegisterInstruction).registerA
-                        toReplace.add(idx to "const-string v$reg, \"$patched\"")
+                        toReplace.add(idx to "const-string v$reg, \"${ref.string}$SUFFIX\"")
                     }
                     toReplace.forEach { (idx, smali) -> method.replaceInstruction(idx, smali) }
                 }
@@ -54,12 +57,18 @@ val mtgaPatchedSuffixPatch =
         dependsOn(mtgaPatchedSuffixBytecodePatch)
 
         execute {
-            // apktool strips android:versionName during decode; setting the
-            // attribute back forces aapt2 link to re-encode it.
+            // apktool strips android:versionName during decode; setting
+            // the attribute back forces aapt2 link to re-encode it.
             document("AndroidManifest.xml").use { document ->
                 val manifest = document.documentElement
-                val versionName = Targets.latest.buildId.versionName
-                manifest.setAttribute("android:versionName", "$versionName$SUFFIX")
+                val current = manifest.getAttribute("android:versionName")
+                val base =
+                    when {
+                        current.isEmpty() -> Targets.latest.buildId.versionName
+                        current.endsWith(SUFFIX) -> current.removeSuffix(SUFFIX)
+                        else -> current
+                    }
+                manifest.setAttribute("android:versionName", "$base$SUFFIX")
             }
         }
     }
