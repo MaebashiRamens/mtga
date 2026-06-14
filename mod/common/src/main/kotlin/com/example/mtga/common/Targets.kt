@@ -34,7 +34,15 @@ object Targets {
     const val PACKAGE = "com.truthsocial.android.app"
 
     val knownVersions: List<TargetSet> =
-        listOf(TargetsV1_27_0, TargetsV1_26_2, TargetsV1_26_1, TargetsV1_24_8, TargetsV1_24_6)
+        listOf(
+            TargetsV1_27_1,
+            TargetsV1_27_0,
+            TargetsV1_26_2,
+            TargetsV1_26_1,
+            TargetsV1_24_10,
+            TargetsV1_24_8,
+            TargetsV1_24_6,
+        )
 
     val knownVersionNames: Array<String>
         get() = knownVersions.map { it.buildId.versionName }.toTypedArray()
@@ -321,6 +329,47 @@ data class TargetSet(
     /** Composable method on [liveContentCarousel] that renders the block. */
     val liveContentCarouselMethod: String = "c",
     /**
+     * Detail-screen `EmbeddedAnnouncementCard` (sponsored/promoted card).
+     * The home feed never calls this — only `Ma.m` (DetailReplyTruth) and
+     * `Ma.p` (TruthDetail) do; see [homeAnnouncementRenderer] for the
+     * home-feed equivalent.
+     *
+     * HOW TO LOCATE: grep `R.string.embedded_announcement_disclaimer` or
+     * `R.string.featured_ads` consumers.
+     */
+    val embeddedAnnouncement: ClassTarget? = null,
+    val embeddedAnnouncementMethods: List<String> = emptyList(),
+    /**
+     * Extra file classes whose Composables render parts of the home-feed
+     * top strip (chip row, sponsored live card). All entries get no-op'd
+     * under HideLiveCarousel; missing entries fall through silently.
+     *
+     * HOW TO LOCATE: grep `r.i("com.truthsocial...Live` source markers; any
+     * file class with `LazyRow` over `LiveShow` belongs here.
+     */
+    val extraLiveRenderers: List<ClassTarget> = emptyList(),
+    /**
+     * `AdView.kt` Composable dispatched by `FeedItemType.NonNativeAd` —
+     * distinct from [embeddedAnnouncement] (detail-screen only) and from
+     * [homeAnnouncementRenderer] (home-feed Announcement).
+     *
+     * HOW TO LOCATE: grep `case 22:` in the feed-item switch (jadx
+     * `Ja/O.java` on v1.27.0); the static call after the `AdItemState`
+     * cast names this class.
+     */
+    val nonNativeAdRenderer: ClassTarget? = null,
+    /**
+     * Home-feed `AnnouncementItem` Composable — the actual renderer for
+     * the "UFC Freedom 250 / Proudly sponsored by Truth Social / Learn
+     * More" banner. Data model is
+     * `com.truthsocial.core.data.models.announcements.Announcement`,
+     * NOT `EmbeddedAnnouncement` (which is the detail-screen path).
+     *
+     * HOW TO LOCATE: grep `Announcement.kt` source markers; the entry
+     * point holds a `static d(Announcement, …)`.
+     */
+    val homeAnnouncementRenderer: ClassTarget? = null,
+    /**
      * The "Ask Perplexity AI" button on the Discover screen (v1.27.0:
      * `S8.E.p(String text, ImageVector icon, De.a onClick, boolean enabled,
      * modifier, m, i, i)`). Older builds may host the same button on a
@@ -334,6 +383,17 @@ data class TargetSet(
     val askPerplexityButton: ClassTarget? = null,
     /** Composable method on [askPerplexityButton] (v1.27.0: `"p"`). */
     val askPerplexityButtonMethod: String = "p",
+    /**
+     * `AppBuildInfo` data class. R8 inlines its property accessors at
+     * every call site, so the only callable surface left is `toString()`
+     * (returns `AppBuildInfo(versionCode=…, versionName=…, …)`). That
+     * is what [com.example.mtga.hooks.VersionSuffixHook] rewrites to tag
+     * analytics / crashlytics payloads.
+     *
+     * HOW TO LOCATE: dexdump for `"AppBuildInfo(versionCode="` —
+     * the declaring class is the data class.
+     */
+    val appBuildInfo: ClassTarget? = null,
     /**
      * Truth Search AI use case. Hilt injects by FQN on v1.24.8 so the
      * original class survives. v1.26.1+ minifies it (becomes a no-op holder).
@@ -507,6 +567,12 @@ data class TargetSet(
      * `aapt2 dump resources base.apk | grep string/help_center`.
      */
     val resStringHelpCenter: Int,
+    /**
+     * `R.string.version` numeric id (template: `"Version: %1$s"`).
+     * Defaults to `0` so the [com.example.mtga.hooks.VersionSuffixHook]
+     * Resources.getString hook silently skips on uncalibrated builds.
+     */
+    val resStringVersion: Int = 0,
 )
 
 /**
@@ -587,6 +653,9 @@ private val TargetsV1_26_1 =
         feedsRepository = ClassTarget("g8.h"),
         appStateManager = ClassTarget("O6.b"),
         adQueueManager = ClassTarget("v7.d"),
+        // `b` is a suspend `(String, Cc.c) → Object` — redirecting to
+        // null breaks the coroutine resume and empties the home timeline.
+        adQueueFetchMethod = null,
         adImpressionManager = ClassTarget("v7.a"),
         analyticsManager = ClassTarget("ac.c"),
         sidebarItemRenderer = ClassTarget("E6.f"),
@@ -598,6 +667,9 @@ private val TargetsV1_26_1 =
         bottomNavAlertsTab = ClassTarget("C6.f\$a"),
         swipeableRow = ClassTarget("c6.d"),
         searchAiUseCase = ClassTarget("x8.l"),
+        askPerplexityButton = ClassTarget("P8.c"),
+        askPerplexityButtonMethod = "e",
+        appBuildInfo = ClassTarget("s7.c"),
         premiumGateHelper = ClassTarget("L6.U"),
         composerViewModel = ClassTarget("db.P"),
         composerScheduleClickMethod = "x1",
@@ -612,6 +684,7 @@ private val TargetsV1_26_1 =
         kotlinFunction0 = ClassTarget("Mc.a"),
         kotlinUnit = ClassTarget("yc.v"),
         resStringHelpCenter = 0x7f120255,
+        resStringVersion = 0x7f120595,
         // New fields all take their data-class defaults, which match v1.26.1.
     )
 
@@ -633,6 +706,9 @@ private val TargetsV1_24_8 =
         feedsRepository = ClassTarget("g8.h"),
         appStateManager = ClassTarget("O6.b"),
         adQueueManager = ClassTarget("v7.d"),
+        // `b` is suspend (Continuation last arg) — redirecting to null
+        // breaks the coroutine resume and empties the home timeline.
+        adQueueFetchMethod = null,
         adImpressionManager = ClassTarget("v7.a"),
         analyticsManager = ClassTarget("ac.c"),
         sidebarItemRenderer = ClassTarget("E6.f"),
@@ -640,10 +716,23 @@ private val TargetsV1_24_8 =
         topAppBarFactory = ClassTarget("Xa.e"),
         navDrawerAvatar = ClassTarget("X5.B"),
         bottomNavTabs = ClassTarget("C6.g"),
+        bottomNavTabsStaticFields = listOf("b"),
         bottomNavAiTab = ClassTarget("C6.f\$f"),
         bottomNavAlertsTab = ClassTarget("C6.f\$a"),
+        bottomNavTabClasses =
+            mapOf(
+                "alerts" to ClassTarget("C6.f\$a"),
+                "discover" to ClassTarget("C6.f\$b"),
+                "groups" to ClassTarget("C6.f\$c"),
+                "feeds" to ClassTarget("C6.f\$d"),
+                "chats" to ClassTarget("C6.f\$e"),
+            ),
         swipeableRow = ClassTarget("c6.d"),
-        searchAiUseCase = ClassTarget("com.truthsocial.app.domain.usecase.ai.SearchAIUseCase"),
+        homeAnnouncementRenderer = ClassTarget("Pa.a"),
+        // FQN does NOT survive R8 on v1.24.x — only the `*_Factory` Hilt
+        // accessor retains it. Runtime class is the renamed no-op holder.
+        searchAiUseCase = ClassTarget("x8.l"),
+        appBuildInfo = ClassTarget("s7.c"),
         premiumGateHelper = ClassTarget("L6.U"),
         composerViewModel = ClassTarget("db.P"),
         composerScheduleClickMethod = "x1",
@@ -658,6 +747,72 @@ private val TargetsV1_24_8 =
         kotlinFunction0 = ClassTarget("Mc.a"),
         kotlinUnit = ClassTarget("yc.v"),
         resStringHelpCenter = 0x7f120252,
+        resStringVersion = 0x7f120592,
+    )
+
+private val TargetsV1_24_10 =
+    TargetSet(
+        buildId =
+            BuildId(
+                versionName = "1.24.10",
+                versionCode = 1230,
+                baseApkSha256 = "06b80a1e5771d42d275b64b297e35b7e77fc62413a1e6a42f47624246049abab",
+            ),
+        integrityInterceptor = ClassTarget("Q6.b"),
+        integrityInterceptMethod = "a",
+        chainRequestField = "e",
+        chainProceedMethod = "b",
+        retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
+        retrofitOkHttpCallEnqueueMethod = "l",
+        retrofitOkHttpCallRequestMethod = "p",
+        feedsRepository = ClassTarget("g8.h"),
+        appStateManager = ClassTarget("O6.b"),
+        adQueueManager = ClassTarget("v7.d"),
+        // `b` is a suspend `(String, Cc.c) → Object` despite the legacy
+        // R8 names — redirecting to null breaks the coroutine resume and
+        // empties the home timeline.
+        adQueueFetchMethod = null,
+        adImpressionManager = ClassTarget("v7.a"),
+        analyticsManager = ClassTarget("ac.c"),
+        sidebarItemRenderer = ClassTarget("E6.f"),
+        accountDrawerScreen = ClassTarget("E6.y"),
+        topAppBarFactory = ClassTarget("Xa.e"),
+        navDrawerAvatar = ClassTarget("X5.B"),
+        bottomNavTabs = ClassTarget("C6.g"),
+        bottomNavTabsStaticFields = listOf("b"),
+        bottomNavAiTab = ClassTarget("C6.f\$f"),
+        bottomNavAlertsTab = ClassTarget("C6.f\$a"),
+        bottomNavTabClasses =
+            mapOf(
+                "alerts" to ClassTarget("C6.f\$a"),
+                "discover" to ClassTarget("C6.f\$b"),
+                "groups" to ClassTarget("C6.f\$c"),
+                "feeds" to ClassTarget("C6.f\$d"),
+                "chats" to ClassTarget("C6.f\$e"),
+            ),
+        swipeableRow = ClassTarget("c6.d"),
+        // Composer interface is `s0.m` on this build (v1.27.x renamed to
+        // `v0.m`); [UICleanupHook]'s composer-prefix regex picks it up.
+        homeAnnouncementRenderer = ClassTarget("Pa.a"),
+        // FQN doesn't survive R8 on v1.24.x — `*_Factory` retains it but
+        // the use case itself is the renamed no-op holder.
+        searchAiUseCase = ClassTarget("x8.l"),
+        appBuildInfo = ClassTarget("s7.c"),
+        premiumGateHelper = ClassTarget("L6.U"),
+        composerViewModel = ClassTarget("db.P"),
+        composerScheduleClickMethod = "x1",
+        navHandler = ClassTarget("Ub.n"),
+        navHandlerNavigateMethod = "d",
+        truthPlusUpsellRoute = ClassTarget("Wb.M\$a"),
+        premiumFeatureRoadblockRoute = ClassTarget("Wb.A\$a"),
+        preferencesBuilder = ClassTarget("sa.j"),
+        preferencesBuilderMethod = "p",
+        preferencesSection = ClassTarget("ic.b"),
+        preferencesTextRow = ClassTarget("ic.d"),
+        kotlinFunction0 = ClassTarget("Mc.a"),
+        kotlinUnit = ClassTarget("yc.v"),
+        resStringHelpCenter = 0x7f120255,
+        resStringVersion = 0x7f120595,
     )
 
 // v1.24.6 obfuscated names are identical to v1.24.8 — R8 hashing was stable
@@ -683,6 +838,9 @@ private val TargetsV1_24_6 =
         feedsRepository = ClassTarget("g8.h"),
         appStateManager = ClassTarget("O6.b"),
         adQueueManager = ClassTarget("v7.d"),
+        // `b` is suspend; redirecting to null breaks the coroutine
+        // resume and empties the home timeline.
+        adQueueFetchMethod = null,
         adImpressionManager = ClassTarget("v7.a"),
         analyticsManager = ClassTarget("ac.c"),
         sidebarItemRenderer = ClassTarget("E6.f"),
@@ -690,10 +848,23 @@ private val TargetsV1_24_6 =
         topAppBarFactory = ClassTarget("Xa.e"),
         navDrawerAvatar = ClassTarget("X5.B"),
         bottomNavTabs = ClassTarget("C6.g"),
+        bottomNavTabsStaticFields = listOf("b"),
         bottomNavAiTab = ClassTarget("C6.f\$f"),
         bottomNavAlertsTab = ClassTarget("C6.f\$a"),
+        bottomNavTabClasses =
+            mapOf(
+                "alerts" to ClassTarget("C6.f\$a"),
+                "discover" to ClassTarget("C6.f\$b"),
+                "groups" to ClassTarget("C6.f\$c"),
+                "feeds" to ClassTarget("C6.f\$d"),
+                "chats" to ClassTarget("C6.f\$e"),
+            ),
         swipeableRow = ClassTarget("c6.d"),
-        searchAiUseCase = ClassTarget("com.truthsocial.app.domain.usecase.ai.SearchAIUseCase"),
+        homeAnnouncementRenderer = ClassTarget("Pa.a"),
+        // FQN doesn't survive R8 on v1.24.x — runtime class is the
+        // renamed no-op holder.
+        searchAiUseCase = ClassTarget("x8.l"),
+        appBuildInfo = ClassTarget("s7.b"),
         premiumGateHelper = ClassTarget("L6.U"),
         composerViewModel = ClassTarget("db.P"),
         composerScheduleClickMethod = "x1",
@@ -708,6 +879,7 @@ private val TargetsV1_24_6 =
         kotlinFunction0 = ClassTarget("Mc.a"),
         kotlinUnit = ClassTarget("yc.v"),
         resStringHelpCenter = 0x7f120252,
+        resStringVersion = 0x7f120592,
     )
 
 // v1.24.8/v1.26.1 share `R8.*` for the alerts screen package and Legacy
@@ -744,7 +916,7 @@ private val TargetsV1_26_2 =
                 versionCode = 1256,
                 baseApkSha256 = "2fa0e3c8dea0967e375a7e7aec135c4bb60ea67c9d6e577010f1496aad291fa3",
             ),
-        integrityInterceptor = ClassTarget("H6.f"),
+        integrityInterceptor = ClassTarget("Q6.b"),
         integrityInterceptMethod = "a",
         // og.g is the new chain class (renamed from Be.h in v1.26.1). Field
         // and method letters are stable.
@@ -773,7 +945,7 @@ private val TargetsV1_26_2 =
         // icon; DO_NOTHING wiped the whole header. The gem badge on the
         // avatar itself is still suppressed via [navDrawerAvatar]
         // (`Cc.p.i` / `Cc.p.j`).
-        accountDrawerGemMethods = listOf("d0"),
+        accountDrawerGemMethods = listOf("f0"),
         // v1.26.2: `Ta.e` (jadx `C1623e.java`) is `FeedsTopBarContentKt`,
         // the Composable rendering the TRUTH+ icon action via
         // `i(v0 CenterAlignedTopAppBar, m, i)`. DO_NOTHING hides only that
@@ -813,9 +985,8 @@ private val TargetsV1_26_2 =
                 editsVisible = "e",
                 scheduleVisible = "g",
             ),
-        // Inherited from v1.26.1; may be wrong.
-        composerViewModel = ClassTarget("db.P"),
-        composerScheduleClickMethod = "x1",
+        composerViewModel = ClassTarget("Za.Z"),
+        composerScheduleClickMethod = "P1",
         navHandler = ClassTarget("Rb.s"),
         navHandlerNavigateMethod = "d",
         truthPlusUpsellRoute = ClassTarget("Tb.M\$a"),
@@ -840,7 +1011,9 @@ private val TargetsV1_26_2 =
         modernPreferencesSection = ClassTarget("Ud.b"),
         modernPreferencesTextRow = ClassTarget("Ud.d"),
         modernKotlinFunction0 = ClassTarget("ye.a"),
+        appBuildInfo = ClassTarget("Zb.a"),
         resStringHelpCenter = 0x7f1202be,
+        resStringVersion = 0x7f1206b7,
     )
 
 // v1.27.0 — best-effort calibration. Same structural churn as v1.26.2 with a
@@ -881,7 +1054,7 @@ private val TargetsV1_27_0 =
         // See v1.26.2 note above: J0 is the full drawer header, not a
         // gem-only Composable. Leaving it out keeps the follower/following
         // counts visible.
-        accountDrawerGemMethods = listOf("d0"),
+        accountDrawerGemMethods = listOf("f0"),
         // See v1.26.2 note above: `Ua.e` (jadx `C1630e.java`) is the icon
         // factory; `mb.v` is the modal.
         topAppBarFactory = ClassTarget("Ua.e"),
@@ -905,8 +1078,43 @@ private val TargetsV1_27_0 =
         swipeableRow = ClassTarget("t2.a"),
         swipeableRowMethod = "e",
         alertsScreenPackagePrefix = "B8.",
+        liveContentCarousel = ClassTarget("wd.j"),
+        // wd.j is the LiveContentCarousel file class. Every public Composable
+        // on it (a = CarouselHeader, b = LiveContentCard, c = main entry,
+        // d = WatchOnTruthPlusOverlay) can render an independently-mounted
+        // fragment of the bar, so we DO_NOTHING all of them.
+        liveContentCarouselMethod = "c",
+        embeddedAnnouncement = ClassTarget("ud.d"),
+        // ud.d hosts the sponsored "embedded announcement" card. Each
+        // public method (a..i) is a distinct Composable that can be picked
+        // up at render time depending on the announcement's shape and the
+        // user's Truth+ status; the only safe option is "no-op everything
+        // returning Unit and taking an `InterfaceC5120m`". The list of
+        // method letters below is exhaustive for v1.27.0.
+        embeddedAnnouncementMethods = listOf("a", "b", "c", "d", "e", "f", "g", "h", "i"),
+        // AvatarCarousel `Ha.o` is intentionally NOT suppressed. Despite
+        // the visual similarity to a "live avatars" row at the top of the
+        // home feed, this Composable is the user-filter chip strip — tap
+        // an avatar to show only that account's posts. It's a useful
+        // feature, not an ad surface.
+        extraLiveRenderers =
+            listOf(
+                // LiveCarouselChipStrip — pill row of "Foul Play",
+                // "Cops Reloaded" etc. at the top of the home feed.
+                ClassTarget("Ua.O"),
+                // LiveTVCard.
+                ClassTarget("mb.q"),
+            ),
+        // AdView (`AdView.kt:52`). Renders the `NonNativeAd` feed item card
+        // — a generic ad container, not the UFC sponsored Announcement.
+        nonNativeAdRenderer = ClassTarget("k6.b"),
+        // Announcement (`Announcement.kt:135`). This is the actual home-feed
+        // renderer for the "UFC Freedom 250 / Proudly sponsored by Truth
+        // Social / Learn More" banner — `Ja.O case 1` → `La.a.d`.
+        homeAnnouncementRenderer = ClassTarget("La.a"),
         askPerplexityButton = ClassTarget("S8.E"),
         askPerplexityButtonMethod = "p",
+        appBuildInfo = ClassTarget("ac.a"),
         // v1.27.0: SearchAIUseCase Hilt factory's newInstance() returns `g8.l`.
         // The class is a no-op holder, so the runtime invoke()-hook has
         // nothing to neutralize, but pointing the field at the real class
@@ -933,14 +1141,16 @@ private val TargetsV1_27_0 =
         feedClass = ClassTarget("com.truthsocial.core.data.models.feeds.Feed"),
         featuresClass = ClassTarget("com.truthsocial.core.data.models.Features"),
         // Preferences screen rewritten. Modern injector targets
-        // `oa.k.p(Zd.f, …)` and appends an MTGA section.
+        // `oa.k.p(Zd.f, …)` and appends an MTGA section. Legacy fields
+        // below are unused under Modern; populated with real classes
+        // so an accidental Legacy fallback doesn't `ClassNotFoundException`.
         preferencesInjector = PreferencesInjectorKind.Modern,
-        preferencesBuilder = ClassTarget("sa.j"),
+        preferencesBuilder = ClassTarget("oa.k"),
         preferencesBuilderMethod = "p",
-        preferencesSection = ClassTarget("ic.b"),
-        preferencesTextRow = ClassTarget("ic.d"),
-        kotlinFunction0 = ClassTarget("Mc.a"),
-        kotlinUnit = ClassTarget("yc.v"),
+        preferencesSection = ClassTarget("Zd.b"),
+        preferencesTextRow = ClassTarget("Zd.d"),
+        kotlinFunction0 = ClassTarget("De.a"),
+        kotlinUnit = ClassTarget("pe.v"),
         modernPreferencesBuilder = ClassTarget("oa.k"),
         modernPreferencesBuilderMethod = "p",
         modernPreferencesRoot = ClassTarget("Zd.f"),
@@ -948,4 +1158,136 @@ private val TargetsV1_27_0 =
         modernPreferencesTextRow = ClassTarget("Zd.d"),
         modernKotlinFunction0 = ClassTarget("De.a"),
         resStringHelpCenter = 0x7f1202c4,
+        resStringVersion = 0x7f1206bf,
+    )
+
+private val TargetsV1_27_1 =
+    TargetSet(
+        buildId =
+            BuildId(
+                versionName = "1.27.1",
+                versionCode = 1260,
+                baseApkSha256 = "e0dc0137dde710c770bbe83920271416cdd75c6bac6103e983950bad39281060",
+            ),
+        // DEX-audited (parallel verifier pass). Several v1.27.0-inherited
+        // values turned out wrong: `I6.f` is now a synthetic Function2
+        // lambda (the integrity interceptor moved to `K6.f`),
+        // `retrofit2.OkHttpCall.u/G` no longer exist (the renamed letters
+        // shifted to `n`/`y` because R8 re-hashed the class), and the
+        // AppStateManagerImpl method assignments rotated by one slot.
+        integrityInterceptor = ClassTarget("K6.f"),
+        integrityInterceptMethod = "a",
+        chainRequestField = "e",
+        chainProceedMethod = "b",
+        retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
+        retrofitOkHttpCallEnqueueMethod = "n",
+        retrofitOkHttpCallRequestMethod = "y",
+        feedsRepository = ClassTarget("R7.i"),
+        appStateManager = ClassTarget("J6.a"),
+        // Method assignments on AppStateManagerImpl rotated:
+        //   `b(gd.h)V` = onReselect (was `c` on v1.27.0)
+        //   `e(gd.h)V` = onSelect   (unchanged)
+        //   `c(gd.h, I)V` = clearBadge (the "(Tab, int)" shape; was `d`)
+        appStateTabSelectMethods = listOf("b", "e"),
+        appStateClearBadgeMethod = "c",
+        adQueueManager = ClassTarget("l7.e"),
+        adQueueFetchMethod = null,
+        adQueueInsertMethod = "c",
+        adImpressionManager = ClassTarget("l7.b"),
+        analyticsManager = ClassTarget("ac.c"),
+        // R8 horizontal-class-merger fused the sidebar Composable into
+        // the account-drawer file class. Both [sidebarItemRenderer] and
+        // [accountDrawerScreen] point at A6.I; `D` and `Q` each take an
+        // int textResId arg that the help-center skip logic matches on.
+        sidebarItemRenderer = ClassTarget("A6.I"),
+        sidebarItemMethods = listOf("D", "Q"),
+        accountDrawerScreen = ClassTarget("A6.I"),
+        // Two gem methods (`f0`, `h0`) on the merged drawer class — list
+        // both so the suppressor catches whichever variant runs.
+        accountDrawerGemMethods = listOf("f0", "h0"),
+        topAppBarFactory = ClassTarget("Wa.e"),
+        topAppBarTruthPlusMethod = "i",
+        navDrawerAvatar = ClassTarget("Jc.p"),
+        navDrawerAvatarBadgeMethods = listOf("i", "j"),
+        // Tab subclasses are `gd.b..g` (each extends `gd.h`). The route
+        // descriptors at `Wb.<letter>` look superficially similar but
+        // aren't tab instances — `isInstance` against them never matches
+        // anything in the static list.
+        bottomNavTabs = ClassTarget("gd.i"),
+        bottomNavTabsListMethod = null,
+        bottomNavTabsStaticFields = listOf("a", "b"),
+        bottomNavAiTab = null,
+        bottomNavAlertsTab = ClassTarget("gd.b"),
+        bottomNavTabClasses =
+            mapOf(
+                "alerts" to ClassTarget("gd.b"),
+                "discover" to ClassTarget("gd.c"),
+                "groups" to ClassTarget("gd.d"),
+                // toString labels diverged from the lowercase route ids:
+                // `gd.e` = "Home" → "feeds"; `gd.f` = "Messages" → "chats".
+                "feeds" to ClassTarget("gd.e"),
+                "chats" to ClassTarget("gd.f"),
+                "predictions" to ClassTarget("gd.g"),
+            ),
+        // R8 horizontal-class-merger collapsed the SwipeableRow file class
+        // INTO `androidx.datastore.preferences.protobuf.n0` — the JVM
+        // descriptor IS that protobuf path, not a jadx display artefact.
+        // `h` is the `SwipeableRow.kt:51` public Composable entry; the
+        // intuitive `t2.a` / `e` calibration matches a dagger lifecycle
+        // helper and silently no-ops the dismiss-alert hook.
+        swipeableRow = ClassTarget("androidx.datastore.preferences.protobuf.n0"),
+        swipeableRowMethod = "h",
+        alertsScreenPackagePrefix = "D8.",
+        liveContentCarousel = ClassTarget("Ad.o"),
+        liveContentCarouselMethod = "c",
+        embeddedAnnouncement = ClassTarget("yd.d"),
+        embeddedAnnouncementMethods = listOf("a", "b", "c", "d", "e", "f", "g", "h", "i"),
+        extraLiveRenderers =
+            listOf(
+                ClassTarget("Wa.O"),
+                ClassTarget("ob.q"),
+            ),
+        nonNativeAdRenderer = ClassTarget("l6.a"),
+        homeAnnouncementRenderer = ClassTarget("Na.a"),
+        askPerplexityButton = ClassTarget("U8.E"),
+        askPerplexityButtonMethod = "p",
+        appBuildInfo = ClassTarget("ec.a"),
+        searchAiUseCase = ClassTarget("i8.l"),
+        premiumGateHelper = ClassTarget("G6.C"),
+        premiumGateMethods =
+            PremiumGateMethods(
+                editsEnabled = "a",
+                scheduleEnabled = "d",
+                geofence = "e",
+                editsVisible = "f",
+                scheduleVisible = "h",
+            ),
+        // `Q1(boolean publish, Continuation) → Object` is the suspend
+        // schedule-click; `P1(String)V` is a sibling that takes a draft id.
+        composerViewModel = ClassTarget("cb.Z"),
+        composerScheduleClickMethod = "Q1",
+        navHandler = ClassTarget("Ub.s"),
+        navHandlerNavigateMethod = "d",
+        truthPlusUpsellRoute = ClassTarget("Wb.M\$a"),
+        premiumFeatureRoadblockRoute = ClassTarget("Wb.B\$a"),
+        feedClass = ClassTarget("com.truthsocial.core.data.models.feeds.Feed"),
+        featuresClass = ClassTarget("com.truthsocial.core.data.models.Features"),
+        preferencesInjector = PreferencesInjectorKind.Modern,
+        // Legacy preferences fields are unused under Modern; populated
+        // with real classes so an accidental Legacy fallback doesn't
+        // `ClassNotFoundException`.
+        preferencesBuilder = ClassTarget("qa.j"),
+        preferencesBuilderMethod = "p",
+        preferencesSection = ClassTarget("de.b"),
+        preferencesTextRow = ClassTarget("de.d"),
+        kotlinFunction0 = ClassTarget("He.a"),
+        kotlinUnit = ClassTarget("te.v"),
+        modernPreferencesBuilder = ClassTarget("qa.j"),
+        modernPreferencesBuilderMethod = "p",
+        modernPreferencesRoot = ClassTarget("de.f"),
+        modernPreferencesSection = ClassTarget("de.b"),
+        modernPreferencesTextRow = ClassTarget("de.d"),
+        modernKotlinFunction0 = ClassTarget("He.a"),
+        resStringHelpCenter = 0x7f1202c4,
+        resStringVersion = 0x7f1206bf,
     )

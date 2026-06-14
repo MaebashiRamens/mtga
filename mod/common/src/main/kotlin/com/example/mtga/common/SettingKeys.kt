@@ -37,6 +37,17 @@ object SettingKeys {
     const val BottomBarTabOrder = "bottom_bar_tab_order"
     const val DefaultBottomBarTabOrder = "feeds,discover,alerts,groups,predictions"
 
+    // v1.26.2+ home-feed additions hidden by dedicated hooks rather than the
+    // server-side Features ctor override (which the server can still ignore).
+    const val HideTopBannerAd = "hide_top_banner_ad"
+    const val HideLiveCarousel = "hide_live_carousel"
+
+    // Append "-mtga-patched" to the Truth Social versionName at runtime so
+    // analytics / About screens advertise the modded build. Mirrors the
+    // build-time [MtgaPatchedSuffixPatch] revanced patch for users who run
+    // MTGA via LSPosed instead of a .rvp-patched APK.
+    const val AppendMtgaSuffix = "append_mtga_suffix"
+
     /**
      * `currentTimeMillis()` snapshot, written by SettingsActivity on every
      * `onStop`. The Truth Social hook reads it on cold start and on every
