@@ -21,6 +21,18 @@
         <meta-data
             android:name="xposedminversion"
             android:value="93" />
+        <!--
+            Opt MTGA into LSPosed's world-readable prefs bridge — the
+            daemon mirrors MTGA's prefs into a dir readable from any
+            hooked process, bypassing both the `<queries>` package
+            visibility filter and the SELinux `app_data_file` cross-UID
+            barrier. Required for builds whose `<queries>` doesn't match
+            our intent-filter trick (Truth Social v1.24.x).
+            https://github.com/LSPosed/LSPosed/wiki/New-XSharedPreferences
+        -->
+        <meta-data
+            android:name="xposedsharedprefs"
+            android:value="true" />
         <meta-data
             android:name="xposeddescription"
             android:value="Ad blocker and feature enhancer for Truth Social" />

@@ -115,27 +115,68 @@ internal object SettingsHolder {
         val context = ctx ?: return // bind() not called yet
         loaded = true
 
-        // Path 1: ContentProvider. Cheapest when it works. Blocked by
-        // Android 11+ package-visibility filtering because Truth Social
-        // didn't declare `<queries>` for `com.example.mtga` (we can't add
-        // it to a third-party manifest), so this stays first but is
-        // expected to fail on most modern builds.
+        // ContentProvider — cheapest path; works when the host's <queries>
+        // matches our intent-filter visibility trick (Truth Social v1.26.2+).
+        // v1.24.x's <queries> only lists <package> entries, so we fall
+        // through to XSharedPreferences for those builds.
         if (tryLoadViaProvider(context)) return
 
-        // Path 2: direct filesystem read of MTGA's private prefs dir.
-        // Almost always blocked by SELinux (`app_data_file` typing
-        // prohibits cross-UID reads); only succeeds on rare devices where
-        // the policy is relaxed.
+        // XSharedPreferences — relies on the LSPosed daemon's broad
+        // file-read sepolicy to bypass `app_data_file` cross-UID
+        // isolation. Requires MTGA off the LSPosed denylist AND the
+        // `xposedsharedprefs=true` manifest flag (set in our manifest).
+        if (tryLoadViaXSharedPreferences()) return
+
+        // Direct file read — succeeds only on userdebug / permissive
+        // SELinux. Kept as a last resort.
         if (tryLoadViaFile()) return
 
-        // Path 3: root shell. KernelSU Next / Magisk grants root to the
-        // Truth Social process globally or per-app; `cat` of MTGA's prefs
-        // file runs as `root`, bypassing SELinux app-data isolation. If
-        // root isn't granted, this returns quickly with `su: not found`
-        // or similar and we fall through.
-        if (tryLoadViaSu()) return
-
         XposedBridge.log("[MTGA] SettingsHolder: every load path failed — using defaults")
+    }
+
+    /**
+     * Read MTGA's prefs via LSPosed's [de.robv.android.xposed.XSharedPreferences].
+     * The LSPosed daemon mirrors any MTGA-side
+     * `getSharedPreferences(MODE_WORLD_READABLE)` write to a managed dir
+     * readable from any hooked process, sidestepping the SELinux
+     * `app_data_file` isolation that blocks [tryLoadViaFile].
+     *
+     * Requires MTGA NOT to be on the LSPosed denylist (ReLSPosed defaults
+     * to allowing modules through, but some installs auto-deny module
+     * APKs as a Zygisk safeguard) and `xposedsharedprefs=true` in our
+     * AndroidManifest meta-data.
+     */
+    private fun tryLoadViaXSharedPreferences(): Boolean {
+        val xprefs =
+            try {
+                de.robv.android.xposed.XSharedPreferences("com.example.mtga", "mtga_settings")
+            } catch (t: Throwable) {
+                XposedBridge.log("[MTGA] SettingsHolder: XSharedPreferences ctor threw: ${t.message}")
+                return false
+            }
+        runCatching { xprefs.makeWorldReadable() }
+        xprefs.reload()
+        val file = xprefs.file
+        if (file == null || !file.canRead()) {
+            XposedBridge.log(
+                "[MTGA] SettingsHolder: XSharedPreferences not readable " +
+                    "(file=${file?.absolutePath}). The most common cause is " +
+                    "`com.example.mtga` being on the LSPosed denylist — " +
+                    "open the LSPosed Manager, find MTGA under Denylist, and " +
+                    "uncheck it. Then restart Truth Social.",
+            )
+            return false
+        }
+        val all = xprefs.all
+        if (all.isEmpty()) {
+            XposedBridge.log("[MTGA] SettingsHolder: XSharedPreferences returned empty map — using defaults")
+            return true // empty is still a successful read (first-launch state)
+        }
+        for ((k, v) in all) {
+            cache[k] = v.toString()
+        }
+        XposedBridge.log("[MTGA] SettingsHolder: loaded ${cache.size} keys via XSharedPreferences")
+        return true
     }
 
     private fun tryLoadViaProvider(context: Context): Boolean {
@@ -180,8 +221,13 @@ internal object SettingsHolder {
      * fallbacks for each toggle.
      */
     private fun tryLoadViaFile(): Boolean {
+        // Prefer the explicit export written by SettingsActivity — its
+        // 0644 mode survives SharedPreferences's atomic-rename writer
+        // which keeps resetting the canonical `shared_prefs/` copy to 0600.
         val candidates =
             listOf(
+                java.io.File("/data/user/0/com.example.mtga/files/mtga_settings_export.xml"),
+                java.io.File("/data/data/com.example.mtga/files/mtga_settings_export.xml"),
                 java.io.File("/data/user/0/com.example.mtga/shared_prefs/mtga_settings.xml"),
                 java.io.File("/data/data/com.example.mtga/shared_prefs/mtga_settings.xml"),
             )
@@ -196,55 +242,6 @@ internal object SettingsHolder {
             true
         } catch (t: Throwable) {
             XposedBridge.log("[MTGA] SettingsHolder: direct file read failed: ${t.message}")
-            false
-        }
-    }
-
-    /**
-     * Read MTGA's prefs via a root shell. Works only on rooted devices
-     * where `su` is granted to the Truth Social process (KernelSU Next /
-     * Magisk per-app grant). No-op without root: the `ProcessBuilder`
-     * exits non-zero almost immediately.
-     *
-     * Invokes `cat` (not a chain of shell pipes) to keep the surface small
-     * and parse step identical to [tryLoadViaFile].
-     */
-    private fun tryLoadViaSu(): Boolean {
-        val path = "/data/user/0/com.example.mtga/shared_prefs/mtga_settings.xml"
-        val xml =
-            try {
-                val proc =
-                    ProcessBuilder("su", "-c", "cat $path")
-                        .redirectErrorStream(false)
-                        .start()
-                val output = proc.inputStream.bufferedReader().readText()
-                // Cap at 5 s. Root prompts that aren't auto-approved
-                // would otherwise wedge us at process start.
-                val ok = proc.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
-                if (!ok) {
-                    proc.destroy()
-                    XposedBridge.log("[MTGA] SettingsHolder: su path timed out")
-                    return false
-                }
-                if (proc.exitValue() != 0) {
-                    XposedBridge.log("[MTGA] SettingsHolder: su path exit=${proc.exitValue()} (no root grant?)")
-                    return false
-                }
-                output
-            } catch (t: Throwable) {
-                XposedBridge.log("[MTGA] SettingsHolder: su path threw: ${t.javaClass.simpleName}: ${t.message}")
-                return false
-            }
-        if (xml.isBlank()) {
-            XposedBridge.log("[MTGA] SettingsHolder: su path produced empty output")
-            return false
-        }
-        return try {
-            parsePrefsXml(xml)
-            XposedBridge.log("[MTGA] SettingsHolder: loaded ${cache.size} keys via su shell")
-            true
-        } catch (t: Throwable) {
-            XposedBridge.log("[MTGA] SettingsHolder: su-path XML parse failed: ${t.message}")
             false
         }
     }

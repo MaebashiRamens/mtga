@@ -9,8 +9,8 @@ import com.example.mtga.common.TargetSet
  * Feature toggle catalog used by the runtime hooks and SettingsActivity.
  * Pref keys live in the shared :common module so patches/ stays in sync.
  *
- * [SettingsCategory] groups items for UI display only; lookup by key goes
- * through [isOn] / [premiumModeOf].
+ * [SettingsCategory] groups items for UI display; categories with
+ * `isAdvanced = true` are rendered under an "Advanced" expandable section.
  */
 object Settings {
     const val PREFS_NAME = SettingKeys.PREFS_NAME
@@ -68,6 +68,28 @@ object Settings {
                     SettingItem.Bool(
                         Toggle(SettingKeys.DisableSearchAi, true, "Disable Search AI", "Neutralizes SearchAIUseCase invocations"),
                     ),
+                    SettingItem.Bool(
+                        Toggle(
+                            SettingKeys.HideTopBannerAd,
+                            true,
+                            "Hide top banner ad",
+                            "Removes the sponsored \"Proudly sponsored by Truth Social\" card at the top of the home feed",
+                            supportedFor = {
+                                it.embeddedAnnouncement != null ||
+                                    it.nonNativeAdRenderer != null ||
+                                    it.homeAnnouncementRenderer != null
+                            },
+                        ),
+                    ),
+                    SettingItem.Bool(
+                        Toggle(
+                            SettingKeys.HideLiveCarousel,
+                            true,
+                            "Hide live content carousel",
+                            "Removes the livestream avatar carousel at the top of the home feed",
+                            supportedFor = { it.liveContentCarousel != null },
+                        ),
+                    ),
                 ),
             ),
             SettingsCategory(
@@ -87,6 +109,23 @@ object Settings {
                             true,
                             "Auto-clear alerts badge",
                             "Resets the unread alerts count when entering the alerts tab",
+                        ),
+                    ),
+                ),
+            ),
+            SettingsCategory(
+                "Branding",
+                listOf(
+                    SettingItem.Bool(
+                        Toggle(
+                            SettingKeys.AppendMtgaSuffix,
+                            true,
+                            "Tag versionName with -mtga-patched",
+                            "Appends \"-mtga-patched\" to Truth Social's runtime versionName " +
+                                "(visible to analytics, crashlytics, and any code reading via " +
+                                "PackageManager). Mirrors the revanced .rvp suffix patch for " +
+                                "LSPosed users.",
+                            supportedFor = { it.appBuildInfo != null },
                         ),
                     ),
                 ),
@@ -117,141 +156,59 @@ object Settings {
             ),
             SettingsCategory(
                 "Experimental",
-                listOf(
-                    SettingItem.Bool(
-                        Toggle(SettingKeys.EnableTv, false, "Enable Truth TV", "Forces Features.tvEnabled to true (server may reject)"),
-                    ),
-                    SettingItem.Bool(
-                        Toggle(
-                            SettingKeys.ReorderBottomBar,
-                            false,
-                            "Reorder bottom bar",
-                            "Reorders the bottom-bar tabs per the list below. Restart Truth Social after editing.",
-                            // BottomBarReorderHook needs the v1.26.2+ static
-                            // list shape (`Zc.j.a` / `cd.j.a`). Older builds
-                            // hand back a fresh list from an instance method
-                            // each call, so the reorder approach doesn't apply.
-                            supportedFor = { it.bottomNavTabsStaticFields.isNotEmpty() },
+                isAdvanced = true,
+                items =
+                    listOf(
+                        SettingItem.Bool(
+                            Toggle(SettingKeys.EnableTv, false, "Enable Truth TV", "Forces Features.tvEnabled to true (server may reject)"),
+                        ),
+                        SettingItem.Bool(
+                            Toggle(
+                                SettingKeys.ReorderBottomBar,
+                                false,
+                                "Reorder bottom bar",
+                                "Reorders the bottom-bar tabs per the list below. Restart Truth Social after editing.",
+                                // BottomBarReorderHook needs the v1.26.2+ static
+                                // list shape (`Zc.j.a` / `cd.j.a`). Older builds
+                                // hand back a fresh list from an instance method
+                                // each call, so the reorder approach doesn't apply.
+                                supportedFor = { it.bottomNavTabsStaticFields.isNotEmpty() },
+                            ),
                         ),
                     ),
-                ),
             ),
-            // Per-field overrides for the `Features` ctor arguments. The
-            // high-level toggles above (`enable_tv`, `post_edit_mode`,
-            // `post_schedule_mode`) cover common cases; this category is the
-            // escape hatch for anything else the server may gate on.
-            // Precedence: high-level toggles run first, then per-field
-            // overrides. A Default override leaves the high-level result
-            // intact; Force(True|False) always wins.
+            // Per-field overrides for `Features` ctor arguments. Entries
+            // that overlap with a higher-level toggle are hidden — the
+            // higher-level toggle is the recommended control surface.
             SettingsCategory(
-                "Feature flag overrides",
-                listOf(
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeatureTvEnabled,
-                            featureIndex = 0,
-                            isNullableBoolean = false,
-                            label = "tvEnabled",
-                            description = "Truth TV feature gate (also covered by Enable Truth TV)",
+                "Feature flags",
+                isAdvanced = true,
+                items =
+                    listOf(
+                        SettingItem.Override(
+                            FeatureOverrideEntry(
+                                SettingKeys.FeaturePredictionsEnabled,
+                                featureIndex = 8,
+                                isNullableBoolean = true,
+                                label = "predictionsEnabled",
+                                description = "Predictions tab + predictions UI (v1.26.2+)",
+                                // Older ctors lack this slot; FeatureFlagHook
+                                // also skips per-arg writes for indices past
+                                // args.size.
+                                supportedFor = { it.buildId.versionCode >= 1256 },
+                            ),
+                        ),
+                        SettingItem.Override(
+                            FeatureOverrideEntry(
+                                SettingKeys.FeatureVideoScrollingEnabled,
+                                featureIndex = 9,
+                                isNullableBoolean = true,
+                                label = "videoScrollingEnabled",
+                                description = "TikTok-style vertical video scrolling (v1.26.2+)",
+                                supportedFor = { it.buildId.versionCode >= 1256 },
+                            ),
                         ),
                     ),
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeatureForYouEnabled,
-                            featureIndex = 1,
-                            isNullableBoolean = false,
-                            label = "forYouEnabled",
-                            description = "For You feed availability flag",
-                        ),
-                    ),
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeatureEditsEnabled,
-                            featureIndex = 2,
-                            isNullableBoolean = true,
-                            label = "editsEnabled",
-                            description = "Post-edit capability (server side gate)",
-                        ),
-                    ),
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeatureEditsVisible,
-                            featureIndex = 3,
-                            isNullableBoolean = true,
-                            label = "editsVisible",
-                            description = "Show the post-edit button in the UI",
-                        ),
-                    ),
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeatureScheduleEnabled,
-                            featureIndex = 4,
-                            isNullableBoolean = true,
-                            label = "scheduleEnabled",
-                            description = "Post-schedule capability (server side gate)",
-                        ),
-                    ),
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeatureScheduleVisible,
-                            featureIndex = 5,
-                            isNullableBoolean = true,
-                            label = "scheduleVisible",
-                            description = "Show the schedule button in the UI",
-                        ),
-                    ),
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeatureGemsEnabled,
-                            featureIndex = 6,
-                            isNullableBoolean = true,
-                            label = "gemsEnabled",
-                            description = "Truth Gems backend availability",
-                        ),
-                    ),
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeatureGemsVisible,
-                            featureIndex = 7,
-                            isNullableBoolean = true,
-                            label = "gemsVisible",
-                            description = "Show Truth Gems UI",
-                        ),
-                    ),
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeaturePredictionsEnabled,
-                            featureIndex = 8,
-                            isNullableBoolean = true,
-                            label = "predictionsEnabled",
-                            description = "Predictions tab + predictions UI (v1.26.2+)",
-                            // Older ctors lack this slot; FeatureFlagHook
-                            // also skips per-arg writes for indices past
-                            // args.size.
-                            supportedFor = { it.buildId.versionCode >= 1256 },
-                        ),
-                    ),
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeatureVideoScrollingEnabled,
-                            featureIndex = 9,
-                            isNullableBoolean = true,
-                            label = "videoScrollingEnabled",
-                            description = "TikTok-style vertical video scrolling (v1.26.2+)",
-                            supportedFor = { it.buildId.versionCode >= 1256 },
-                        ),
-                    ),
-                    SettingItem.Override(
-                        FeatureOverrideEntry(
-                            SettingKeys.FeatureLiveContentCarouselEnabled,
-                            featureIndex = 10,
-                            isNullableBoolean = true,
-                            label = "liveContentCarouselEnabled",
-                            description = "Podcast/livestream bar at top of home (v1.27.0+)",
-                            supportedFor = { it.buildId.versionCode >= 1258 },
-                        ),
-                    ),
-                ),
             ),
         )
 
@@ -293,6 +250,12 @@ object Settings {
 data class SettingsCategory(
     val title: String,
     val items: List<SettingItem>,
+    /**
+     * `true` when this category should live under the collapsible "Advanced"
+     * section in [com.example.mtga.ui.MtgaSettingsScreen]. The hook layer is
+     * agnostic to this flag — it only affects the Settings UI grouping.
+     */
+    val isAdvanced: Boolean = false,
 )
 
 sealed interface SettingItem {
