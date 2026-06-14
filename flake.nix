@@ -112,14 +112,6 @@
           # Point Android Gradle Plugin at the SDK. The Gradle root for the
           # LSPosed module is mod/, so the local.properties lives there.
           echo "sdk.dir=$ANDROID_HOME" > mod/local.properties
-
-          echo "MTGA dev shell. Commands:"
-          echo "  mtga-setup         - One-time rooted AVD setup"
-          echo "  mtga-start         - Boot rooted emulator"
-          echo "  mtga-deploy        - Build & install Xposed module"
-          echo "  mtga-install-app   - Install Truth Social .apkm/.xapk on the emulator"
-          echo "  mtga-build-patches - Build MTGA .rvp via gh-token (requires read:packages scope)"
-          echo "  mtga-patch-app     - Apply MTGA patches to a .apk/.apkm/.xapk via revanced-cli"
         '';
       };
     };
