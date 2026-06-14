@@ -50,22 +50,21 @@ class AdBlockHook(
             )
         }
 
-        // Insert/list-ads method. Per-build signature decides what we return.
+        // Per-build signature decides what we return — see [InsertShape].
         XposedBridge.hookAllMethods(
             clazz,
             targets.adQueueInsertMethod,
             object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
-                    if (looksLikeV1_26_2InsertSignature(param)) {
-                        // suspend Object c(List<Integer>, String, int, Continuation):
-                        // resolve to an empty ads list. The caller awaits
-                        // the Continuation result, so setting the method
-                        // result short-circuits the body.
-                        param.result = emptyList<Any>()
-                    } else {
-                        // Legacy v1.26.1 / v1.24.x: 3rd arg is the feed list;
-                        // return it unchanged so no ads get spliced in.
-                        param.args.getOrNull(2)?.let { param.result = it }
+                    when (classifyInsertSignature(param)) {
+                        InsertShape.SuspendListFetcher -> {
+                            param.result = emptyList<Any>()
+                        }
+                        InsertShape.SuspendMergedFeed,
+                        InsertShape.LegacyFeedListInsert,
+                        -> {
+                            param.args.getOrNull(2)?.let { param.result = it }
+                        }
                     }
                 }
             },
@@ -87,22 +86,55 @@ class AdBlockHook(
     }
 
     /**
-     * The v1.26.2+ refactor of `c()` is a suspend function. Kotlin's
-     * compiler surfaces that as a Java method whose last parameter is a
-     * `kotlin.coroutines.Continuation` (R8 renames the class but keeps
-     * the `kotlin.coroutines` package name). Use that signal instead of a
-     * per-version method-shape table.
+     * Three shapes of `AdQueueManager.c(...)` across Truth Social
+     * releases. Returning empty is only safe for the list-fetcher
+     * variant; the other two return the merged feed and have to be
+     * handed arg[2] (the feed list) back unchanged.
      */
-    private fun looksLikeV1_26_2InsertSignature(param: XC_MethodHook.MethodHookParam): Boolean {
+    private enum class InsertShape {
+        /** Suspend `c(List, String, int, Continuation)` → just the ads. */
+        SuspendListFetcher,
+
+        /** Suspend `c(List, String, List feed, Continuation)` → merged feed. */
+        SuspendMergedFeed,
+
+        /** Non-suspend `c(_, _, feedList, …)` → merged feed. */
+        LegacyFeedListInsert,
+    }
+
+    /**
+     * `kotlin.coroutines.Continuation` is R8-renamed per build, so we
+     * detect suspendiness structurally via [isContinuationLike] instead
+     * of by class name. The third arg type then separates the v1.26.2+
+     * list-fetcher (Int) from the v1.24.10 backport (List).
+     */
+    private fun classifyInsertSignature(param: XC_MethodHook.MethodHookParam): InsertShape {
         val args = param.args
-        if (args.isEmpty()) return false
-        // Suspend functions get a Continuation as their last extra param.
-        // Its R8-renamed class lives under "kotlin.coroutines.*"; the
-        // package prefix survives because the Kotlin runtime keeps it.
-        val last = args.last() ?: return false
-        return last.javaClass.interfaces.any { it.name == "kotlin.coroutines.Continuation" } ||
-            generateSequence(last.javaClass as Class<*>?) { it.superclass }
-                .any { it.name == "kotlin.coroutines.jvm.internal.ContinuationImpl" }
+        if (args.isEmpty()) return InsertShape.LegacyFeedListInsert
+        val last = args.last()
+        val suspend = last != null && isContinuationLike(last.javaClass)
+        if (!suspend) return InsertShape.LegacyFeedListInsert
+        val third = args.getOrNull(2)
+        return if (third is Int) InsertShape.SuspendListFetcher else InsertShape.SuspendMergedFeed
+    }
+
+    private fun isContinuationLike(cls: Class<*>): Boolean {
+        // Walk the class + interface graph for `resumeWith(Object)`.
+        val seen = HashSet<Class<*>>()
+        val queue = ArrayDeque<Class<*>>()
+        queue.add(cls)
+        while (queue.isNotEmpty()) {
+            val c = queue.removeFirst()
+            if (!seen.add(c)) continue
+            val hit =
+                c.declaredMethods.any {
+                    it.name == "resumeWith" && it.parameterCount == 1
+                }
+            if (hit) return true
+            c.superclass?.let(queue::add)
+            c.interfaces.forEach(queue::add)
+        }
+        return false
     }
 
     private fun hookAdImpressionManager(classLoader: ClassLoader) {
