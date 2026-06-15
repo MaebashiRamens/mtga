@@ -5,8 +5,10 @@ package com.example.mtga.common
  *
  * R8 renames classes and methods on every build, so v1.24.8 names won't
  * match v1.25.0. One [TargetSet] per tested version. At hook init we look up
- * the current versionCode and pick the matching set; on a miss, the runtime
- * hooks bail rather than bind to wrong symbols.
+ * the current versionCode and pick the matching set; on a miss we fall back to
+ * [latest], warn the user, and rely on each hook's own try/catch (and the
+ * [FallbackResolver] dynamic-discovery path) to degrade gracefully rather than
+ * crash the host.
  *
  * ## Calibration workflow (adding a new version)
  *
@@ -44,6 +46,16 @@ object Targets {
             TargetsV1_24_6,
         )
 
+    init {
+        // The lookups below assume versionCode and versionName each identify at
+        // most one TargetSet; a duplicate would make forVersionCode/forVersionName
+        // silently shadow an entry. Catch a bad calibration at class-load time.
+        val codes = knownVersions.map { it.buildId.versionCode }
+        require(codes.toSet().size == codes.size) { "knownVersions has duplicate versionCode(s): $codes" }
+        val names = knownVersions.map { it.buildId.versionName }
+        require(names.toSet().size == names.size) { "knownVersions has duplicate versionName(s): $names" }
+    }
+
     val knownVersionNames: Array<String>
         get() = knownVersions.map { it.buildId.versionName }.toTypedArray()
 
@@ -51,7 +63,13 @@ object Targets {
 
     fun forVersionName(versionName: String): TargetSet? = knownVersions.firstOrNull { it.buildId.versionName == versionName }
 
-    val latest: TargetSet get() = knownVersions.first()
+    /**
+     * The newest calibrated set, used as the fallback for unknown builds.
+     * Derived from the max versionCode so it stays correct regardless of the
+     * order entries are listed in [knownVersions] (step 6 of the calibration
+     * workflow says "append", which a positional `first()` would get wrong).
+     */
+    val latest: TargetSet get() = knownVersions.maxByOrNull { it.buildId.versionCode }!!
 
     /**
      * Look up the TargetSet for a versionCode, falling back to [latest] when
