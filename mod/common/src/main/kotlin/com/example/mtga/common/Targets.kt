@@ -129,6 +129,35 @@ data class TargetSet(
     /** HOW TO LOCATE: in the chain class, the method whose body advances the interceptor index and returns a Response. Usually `b`. */
     val chainProceedMethod: String,
     /**
+     * Concrete OkHttp `RealInterceptorChain` impl that [integrityInterceptor]
+     * receives as its `Interceptor.Chain` argument. Only the bytecode integrity
+     * bypass needs it (it check-casts the chain to this type to read
+     * [chainRequestField] and call [chainProceedMethod]); the runtime hook does
+     * the same reflectively, so it has no equivalent field.
+     *
+     * HOW TO LOCATE: the class declaring `${chainRequestField}` (typed as the
+     * obfuscated okhttp Request) and `${chainProceedMethod}(Request)Response`.
+     * Renamed Be.h (≤1.26.1) → og.g (1.26.2) → tg.g (1.27.0) → xg.g (1.27.1).
+     */
+    val integrityChain: ClassTarget,
+    /**
+     * `okhttp3.Request` after R8 — type of [chainRequestField] and the return
+     * type of [retrofitOkHttpCallRequestMethod]. Used by the integrity bypass
+     * and okhttp ad-block patches.
+     *
+     * HOW TO LOCATE: the declared type of the `${chainRequestField}` field on
+     * [integrityChain].
+     */
+    val okhttpRequest: ClassTarget,
+    /**
+     * `okhttp3.Response` after R8 — return type of [chainProceedMethod] on
+     * [integrityChain]. Used by the integrity bypass patch.
+     *
+     * HOW TO LOCATE: the return type of `${chainProceedMethod}(Request)` on
+     * [integrityChain].
+     */
+    val okhttpResponse: ClassTarget,
+    /**
      * Retrofit's `OkHttpCall`. Retrofit's ProGuard rules keep the original
      * FQN on every build. Hard-coded as a sanity check.
      */
@@ -665,6 +694,9 @@ private val TargetsV1_26_1 =
         integrityInterceptMethod = "a",
         chainRequestField = "e",
         chainProceedMethod = "b",
+        integrityChain = ClassTarget("Be.h"),
+        okhttpRequest = ClassTarget("we.B"),
+        okhttpResponse = ClassTarget("we.H"),
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "l",
         retrofitOkHttpCallRequestMethod = "p",
@@ -718,6 +750,9 @@ private val TargetsV1_24_8 =
         integrityInterceptMethod = "a",
         chainRequestField = "e",
         chainProceedMethod = "b",
+        integrityChain = ClassTarget("Be.h"),
+        okhttpRequest = ClassTarget("we.B"),
+        okhttpResponse = ClassTarget("we.H"),
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "l",
         retrofitOkHttpCallRequestMethod = "p",
@@ -780,6 +815,9 @@ private val TargetsV1_24_10 =
         integrityInterceptMethod = "a",
         chainRequestField = "e",
         chainProceedMethod = "b",
+        integrityChain = ClassTarget("Be.h"),
+        okhttpRequest = ClassTarget("we.B"),
+        okhttpResponse = ClassTarget("we.H"),
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "l",
         retrofitOkHttpCallRequestMethod = "p",
@@ -850,6 +888,9 @@ private val TargetsV1_24_6 =
         integrityInterceptMethod = "a",
         chainRequestField = "e",
         chainProceedMethod = "b",
+        integrityChain = ClassTarget("Be.h"),
+        okhttpRequest = ClassTarget("we.B"),
+        okhttpResponse = ClassTarget("we.H"),
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "l",
         retrofitOkHttpCallRequestMethod = "p",
@@ -940,6 +981,9 @@ private val TargetsV1_26_2 =
         // and method letters are stable.
         chainRequestField = "e",
         chainProceedMethod = "b",
+        integrityChain = ClassTarget("og.g"),
+        okhttpRequest = ClassTarget("jg.D"),
+        okhttpResponse = ClassTarget("jg.J"),
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "l",
         retrofitOkHttpCallRequestMethod = "p",
@@ -1050,6 +1094,9 @@ private val TargetsV1_27_0 =
         // tg.g is the v1.27 chain class.
         chainRequestField = "e",
         chainProceedMethod = "b",
+        integrityChain = ClassTarget("tg.g"),
+        okhttpRequest = ClassTarget("og.E"),
+        okhttpResponse = ClassTarget("og.K"),
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "u",
         retrofitOkHttpCallRequestMethod = "G",
@@ -1197,6 +1244,9 @@ private val TargetsV1_27_1 =
         integrityInterceptMethod = "a",
         chainRequestField = "e",
         chainProceedMethod = "b",
+        integrityChain = ClassTarget("xg.g"),
+        okhttpRequest = ClassTarget("sg.D"),
+        okhttpResponse = ClassTarget("sg.J"),
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "n",
         retrofitOkHttpCallRequestMethod = "y",

@@ -8,9 +8,11 @@ import com.example.mtga.patches.methodsNamed
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
-// p1 is declared `Lwe/s;` (Interceptor.Chain) but the request field only
-// exists on the concrete `LBe/h;`. Without the check-cast the verifier
-// rejects the iget with "Reference: we.s not instance of Be.h".
+// p1 is declared as the `Interceptor.Chain` interface, but the request field
+// only exists on the concrete chain impl (Be.h ≤1.26.1, og.g/tg.g/xg.g on
+// newer builds). Without the check-cast the verifier rejects the iget. The
+// chain class and the okhttp Request/Response descriptors all drift per build,
+// so read them from the resolved TargetSet rather than hardcoding.
 
 @Suppress("unused")
 val bypassIntegrityPatch =
@@ -22,6 +24,9 @@ val bypassIntegrityPatch =
 
         execute {
             val targets = mtgaTargets
+            val chain = targets.integrityChain.descriptor
+            val request = targets.okhttpRequest.descriptor
+            val response = targets.okhttpResponse.descriptor
             mutableClassByType(targets.integrityInterceptor.descriptor)
                 .methodsNamed(targets.integrityInterceptMethod)
                 .forEach { method ->
@@ -29,9 +34,9 @@ val bypassIntegrityPatch =
                         0,
                         """
                         move-object v0, p1
-                        check-cast v0, LBe/h;
-                        iget-object v1, v0, LBe/h;->${targets.chainRequestField}:Lwe/B;
-                        invoke-virtual {v0, v1}, LBe/h;->${targets.chainProceedMethod}(Lwe/B;)Lwe/H;
+                        check-cast v0, $chain
+                        iget-object v1, v0, $chain->${targets.chainRequestField}:$request
+                        invoke-virtual {v0, v1}, $chain->${targets.chainProceedMethod}($request)$response
                         move-result-object v0
                         return-object v0
                         """,

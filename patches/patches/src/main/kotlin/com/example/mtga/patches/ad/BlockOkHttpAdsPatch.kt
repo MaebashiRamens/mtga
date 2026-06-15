@@ -28,12 +28,16 @@ val blockOkHttpAdsPatch =
             val okHttpCallDesc = targets.retrofitOkHttpCall.descriptor
             val enqueueName = targets.retrofitOkHttpCallEnqueueMethod
             val requestBuilderName = targets.retrofitOkHttpCallRequestMethod
+            // okhttp3.Request is R8-renamed per build (we.B -> jg.D -> og.E ->
+            // sg.D); read it from the TargetSet so the invoke-virtual return
+            // descriptor matches the real method signature.
+            val requestDesc = targets.okhttpRequest.descriptor
 
             mutableClassByType(okHttpCallDesc).methodsNamed(enqueueName).forEach { method ->
                 method.addInstructionsWithLabels(
                     0,
                     """
-                    invoke-virtual {p0}, $okHttpCallDesc->$requestBuilderName()Lwe/B;
+                    invoke-virtual {p0}, $okHttpCallDesc->$requestBuilderName()$requestDesc
                     move-result-object v0
                     invoke-virtual {v0}, Ljava/lang/Object;->toString()Ljava/lang/String;
                     move-result-object v0
