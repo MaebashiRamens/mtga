@@ -191,6 +191,22 @@ data class TargetSet(
      */
     val feedsRepository: ClassTarget,
     /**
+     * Getter for `Feed.id`, or `null` when the build exposes no getter and the
+     * id must be read from [feedIdField] directly. On ≤1.26.1 R8 keeps a
+     * `public final i()Ljava/lang/String;` getter; on 1.26.2+ the getter is
+     * gone and [feedIdField] is public, so [HideForYouPatch] reads the field.
+     *
+     * HOW TO LOCATE: in the Feed class, the no-arg `String` method whose body
+     * returns [feedIdField]. If none exists, set `null`.
+     */
+    val feedIdMethod: String?,
+    /**
+     * Backing field for `Feed.id`. Stable as `a` across every calibrated build
+     * (first declared property). Private ≤1.26.1 (read via [feedIdMethod]),
+     * public 1.26.2+ (read directly).
+     */
+    val feedIdField: String = "a",
+    /**
      * `AppStateManagerImpl`. Bottom-bar nav + badge counts.
      *
      * HOW TO LOCATE: a class with `c(menuItem)`, `e(menuItem)` and
@@ -697,6 +713,7 @@ private val TargetsV1_26_1 =
         integrityChain = ClassTarget("Be.h"),
         okhttpRequest = ClassTarget("we.B"),
         okhttpResponse = ClassTarget("we.H"),
+        feedIdMethod = "i",
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "l",
         retrofitOkHttpCallRequestMethod = "p",
@@ -753,6 +770,7 @@ private val TargetsV1_24_8 =
         integrityChain = ClassTarget("Be.h"),
         okhttpRequest = ClassTarget("we.B"),
         okhttpResponse = ClassTarget("we.H"),
+        feedIdMethod = "i",
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "l",
         retrofitOkHttpCallRequestMethod = "p",
@@ -818,6 +836,7 @@ private val TargetsV1_24_10 =
         integrityChain = ClassTarget("Be.h"),
         okhttpRequest = ClassTarget("we.B"),
         okhttpResponse = ClassTarget("we.H"),
+        feedIdMethod = "i",
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "l",
         retrofitOkHttpCallRequestMethod = "p",
@@ -891,6 +910,7 @@ private val TargetsV1_24_6 =
         integrityChain = ClassTarget("Be.h"),
         okhttpRequest = ClassTarget("we.B"),
         okhttpResponse = ClassTarget("we.H"),
+        feedIdMethod = "i",
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "l",
         retrofitOkHttpCallRequestMethod = "p",
@@ -984,6 +1004,7 @@ private val TargetsV1_26_2 =
         integrityChain = ClassTarget("og.g"),
         okhttpRequest = ClassTarget("jg.D"),
         okhttpResponse = ClassTarget("jg.J"),
+        feedIdMethod = null,
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "l",
         retrofitOkHttpCallRequestMethod = "p",
@@ -1097,6 +1118,7 @@ private val TargetsV1_27_0 =
         integrityChain = ClassTarget("tg.g"),
         okhttpRequest = ClassTarget("og.E"),
         okhttpResponse = ClassTarget("og.K"),
+        feedIdMethod = null,
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "u",
         retrofitOkHttpCallRequestMethod = "G",
@@ -1247,6 +1269,7 @@ private val TargetsV1_27_1 =
         integrityChain = ClassTarget("xg.g"),
         okhttpRequest = ClassTarget("sg.D"),
         okhttpResponse = ClassTarget("sg.J"),
+        feedIdMethod = null,
         retrofitOkHttpCall = ClassTarget("retrofit2.OkHttpCall"),
         retrofitOkHttpCallEnqueueMethod = "n",
         retrofitOkHttpCallRequestMethod = "y",

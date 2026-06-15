@@ -9,16 +9,33 @@ import com.example.mtga.patches.methodsNamed
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
-// Feed.getId is R8-renamed and drifts per build, but no TargetSet field
-// carries it yet, so it stays pinned here. The Feed class descriptor itself
-// moved packages (app.* -> core.* in v1.26.2+), so that one is read per-APK
-// from the resolved TargetSet (targets.feedClass.descriptor) and threaded in.
-private const val FEED_ID_METHOD = "i"
+// The Feed class descriptor moved packages (app.* -> core.* in v1.26.2+) and
+// the id accessor differs by build: ≤1.26.1 exposes a `feedIdMethod` getter
+// (the `id` field is private), 1.26.2+ dropped the getter and made the field
+// public — so both the descriptor and the read strategy come from the
+// resolved TargetSet and are threaded in here.
+private fun feedIdExtract(
+    feedDescriptor: String,
+    feedIdMethod: String?,
+    feedIdField: String,
+    item: String,
+    id: String,
+): String =
+    if (feedIdMethod != null) {
+        """
+        invoke-virtual {$item}, $feedDescriptor->$feedIdMethod()Ljava/lang/String;
+        move-result-object $id
+        """.trim()
+    } else {
+        "iget-object $id, $item, $feedDescriptor->$feedIdField:Ljava/lang/String;"
+    }
 
 // inputReg may share a register with outputReg / arrayList; the input is
 // moved into `save` first.
 private fun filterSmali(
     feedDescriptor: String,
+    feedIdMethod: String?,
+    feedIdField: String,
     inputReg: String,
     outputReg: String,
     save: String,
@@ -41,8 +58,7 @@ private fun filterSmali(
     invoke-interface {$iter}, Ljava/util/Iterator;->next()Ljava/lang/Object;
     move-result-object $item
     check-cast $item, $feedDescriptor
-    invoke-virtual {$item}, $feedDescriptor->$FEED_ID_METHOD()Ljava/lang/String;
-    move-result-object $id
+    ${feedIdExtract(feedDescriptor, feedIdMethod, feedIdField, item, id)}
     const-string $scratch, "for_you"
     invoke-virtual {$id, $scratch}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
     move-result $scratch
@@ -85,6 +101,8 @@ val hideForYouPatch =
                     lastReturnIdx,
                     filterSmali(
                         feedDescriptor = targets.feedClass.descriptor,
+                        feedIdMethod = targets.feedIdMethod,
+                        feedIdField = targets.feedIdField,
                         inputReg = "v0",
                         outputReg = "v0",
                         save = "v6",
@@ -103,6 +121,8 @@ val hideForYouPatch =
                     0,
                     filterSmali(
                         feedDescriptor = targets.feedClass.descriptor,
+                        feedIdMethod = targets.feedIdMethod,
+                        feedIdField = targets.feedIdField,
                         inputReg = "p1",
                         outputReg = "p1",
                         save = "v0",

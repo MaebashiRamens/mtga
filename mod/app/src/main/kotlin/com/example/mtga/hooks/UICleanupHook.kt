@@ -252,17 +252,19 @@ class UICleanupHook(
         return keep
     }
 
-    /** Feed.getId() is renamed to i() and field 'id' to 'a' by R8. */
-    private fun getFeedId(feed: Any): String? =
-        try {
-            XposedHelpers.callMethod(feed, "i")?.toString()
-        } catch (_: Throwable) {
-            try {
-                XposedHelpers.getObjectField(feed, "a")?.toString()
-            } catch (_: Throwable) {
-                null
-            }
+    /**
+     * Read `Feed.id`. ≤1.26.1 exposes the [TargetSet.feedIdMethod] getter
+     * (`i()`); 1.26.2+ dropped it, so fall back to the [TargetSet.feedIdField]
+     * (`a`) field. Both are sourced from the resolved TargetSet.
+     */
+    private fun getFeedId(feed: Any): String? {
+        targets.feedIdMethod?.let { method ->
+            runCatching { XposedHelpers.callMethod(feed, method)?.toString() }
+                .getOrNull()
+                ?.let { return it }
         }
+        return runCatching { XposedHelpers.getObjectField(feed, targets.feedIdField)?.toString() }.getOrNull()
+    }
 
     /**
      * Sidebar entries render via a Composable on [TargetSet.sidebarItemRenderer].
