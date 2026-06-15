@@ -7,9 +7,11 @@ import com.example.mtga.patches.MTGA_TARGET_PACKAGE
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
-// L6.U.d(user) is the smsCountry=="US" geofence. The other helpers
-// (a/c/e/g) AND their feature flag with it, so forcing d() true is the
-// prerequisite for the ForceEnable* patches to surface buttons.
+// premiumGateMethods.geofence (L6.U.d on v1.26.x) is the smsCountry=="US"
+// geofence. The other helpers AND their feature flag with it, so forcing it
+// true is the prerequisite for the ForceEnable* patches to surface buttons.
+// The R8 letters drift between builds, so read the per-APK TargetSet rather
+// than hardcoding `d` — mirrors FeatureFlagHook.patchPremiumGate.
 
 @Suppress("unused")
 val premiumGeofenceBypassPatch =
@@ -21,9 +23,10 @@ val premiumGeofenceBypassPatch =
 
         execute {
             val targets = mtgaTargets
+            val geofenceMethod = targets.premiumGateMethods.geofence
             mutableClassByType(targets.premiumGateHelper.descriptor)
                 .methods
-                .filter { it.name == "d" && it.returnType == "Z" }
+                .filter { it.name == geofenceMethod && it.returnType == "Z" }
                 .forEach {
                     it.addInstructions(
                         0,

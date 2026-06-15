@@ -9,12 +9,16 @@ import com.example.mtga.patches.methodsNamed
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByType
 
-private const val FEED_DESCRIPTOR = "Lcom/truthsocial/app/data/models/feeds/Feed;"
+// Feed.getId is R8-renamed and drifts per build, but no TargetSet field
+// carries it yet, so it stays pinned here. The Feed class descriptor itself
+// moved packages (app.* -> core.* in v1.26.2+), so that one is read per-APK
+// from the resolved TargetSet (targets.feedClass.descriptor) and threaded in.
 private const val FEED_ID_METHOD = "i"
 
 // inputReg may share a register with outputReg / arrayList; the input is
 // moved into `save` first.
 private fun filterSmali(
+    feedDescriptor: String,
     inputReg: String,
     outputReg: String,
     save: String,
@@ -36,8 +40,8 @@ private fun filterSmali(
     if-eqz $scratch, :mtga_loop_end
     invoke-interface {$iter}, Ljava/util/Iterator;->next()Ljava/lang/Object;
     move-result-object $item
-    check-cast $item, $FEED_DESCRIPTOR
-    invoke-virtual {$item}, $FEED_DESCRIPTOR->$FEED_ID_METHOD()Ljava/lang/String;
+    check-cast $item, $feedDescriptor
+    invoke-virtual {$item}, $feedDescriptor->$FEED_ID_METHOD()Ljava/lang/String;
     move-result-object $id
     const-string $scratch, "for_you"
     invoke-virtual {$id, $scratch}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
@@ -80,6 +84,7 @@ val hideForYouPatch =
                 method.addInstructionsWithLabels(
                     lastReturnIdx,
                     filterSmali(
+                        feedDescriptor = targets.feedClass.descriptor,
                         inputReg = "v0",
                         outputReg = "v0",
                         save = "v6",
@@ -97,6 +102,7 @@ val hideForYouPatch =
                 method.addInstructionsWithLabels(
                     0,
                     filterSmali(
+                        feedDescriptor = targets.feedClass.descriptor,
                         inputReg = "p1",
                         outputReg = "p1",
                         save = "v0",

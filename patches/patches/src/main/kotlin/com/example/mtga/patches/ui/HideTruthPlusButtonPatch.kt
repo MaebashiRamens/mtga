@@ -29,7 +29,7 @@ val hideTruthPlusButtonPatch =
                     ?: throw PatchException("$unitDesc has no singleton field")
 
             mutableClassByType(targets.topAppBarFactory.descriptor)
-                .methodsNamed("i")
+                .methodsNamed(targets.topAppBarTruthPlusMethod)
                 .forEach { method ->
                     val returnSmali =
                         when (method.returnType) {
@@ -40,7 +40,8 @@ val hideTruthPlusButtonPatch =
                                 return-object v0
                                 """
                             else -> throw PatchException(
-                                "${targets.topAppBarFactory.name}.i: unexpected return type ${method.returnType}",
+                                "${targets.topAppBarFactory.name}.${targets.topAppBarTruthPlusMethod}: " +
+                                    "unexpected return type ${method.returnType}",
                             )
                         }
                     method.addInstructions(0, returnSmali)

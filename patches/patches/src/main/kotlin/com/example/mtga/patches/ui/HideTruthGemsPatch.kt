@@ -19,13 +19,12 @@ val hideTruthGemsPatch =
 
         execute {
             val targets = mtgaTargets
+            // The gem/badge method letters drift per build, so read them from
+            // the per-APK TargetSet lists instead of hardcoding — mirrors the
+            // UICleanupHook gem-hiding path.
             val table: List<Pair<ClassTarget, String>> =
-                listOf(
-                    targets.navDrawerAvatar to "k",
-                    targets.navDrawerAvatar to "m",
-                    targets.accountDrawerScreen to "M",
-                    targets.accountDrawerScreen to "b0",
-                )
+                targets.navDrawerAvatarBadgeMethods.map { targets.navDrawerAvatar to it } +
+                    targets.accountDrawerGemMethods.map { targets.accountDrawerScreen to it }
             for ((classTarget, methodName) in table) {
                 mutableClassByType(classTarget.descriptor)
                     .methodsNamed(methodName)

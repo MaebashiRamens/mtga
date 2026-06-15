@@ -23,9 +23,12 @@ val hideHelpCenterPatch =
         execute {
             val targets = mtgaTargets
             val helpCenterId = targets.resStringHelpCenter
-            mutableClassByType(targets.sidebarItemRenderer.descriptor)
-                .methodsNamed("j")
-                .forEach { method ->
+            val renderer = mutableClassByType(targets.sidebarItemRenderer.descriptor)
+            // The renderer's item method is R8-renamed and drifts (e.g. "j" on
+            // older builds, "m"/"n" on newer ones), so read the per-APK list
+            // from the TargetSet instead of hardcoding "j" — mirrors the hook.
+            targets.sidebarItemMethods.forEach { methodName ->
+                renderer.methodsNamed(methodName).forEach { method ->
                     method.addInstructionsWithLabels(
                         0,
                         """
@@ -38,5 +41,6 @@ val hideHelpCenterPatch =
                         """,
                     )
                 }
+            }
         }
     }
