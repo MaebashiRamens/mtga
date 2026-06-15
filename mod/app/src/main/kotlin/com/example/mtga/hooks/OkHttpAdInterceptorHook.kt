@@ -38,7 +38,17 @@ class OkHttpAdInterceptorHook(
             val url = readRequestUrl(param.thisObject) ?: return
             if (BLOCKED_URL_PATTERNS.any { url.contains(it) }) {
                 XposedBridge.log("[$TAG] Blocked ad request: $url")
-                param.result = null
+                if (param.method.name == "execute") {
+                    // Synchronous `Call.execute()` must return a non-null
+                    // Response — `result = null` would NPE the host. Surface a
+                    // network-style failure instead so the caller's existing
+                    // error path handles it (the data-layer AdBlockHook still
+                    // hides the ad either way). `execute` declares IOException.
+                    param.throwable = java.io.IOException("MTGA: blocked ad request")
+                } else {
+                    // `enqueue(...)` returns void; suppressing it is enough.
+                    param.result = null
+                }
             }
         }
 
