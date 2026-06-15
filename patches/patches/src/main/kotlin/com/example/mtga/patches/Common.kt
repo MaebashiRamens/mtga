@@ -98,3 +98,21 @@ internal fun MutableClassDef.neutraliseComposables(): Int {
 // Mirror of [com.example.mtga.hooks.UICleanupHook]'s
 // COMPOSER_PACKAGE_REGEX (DEX descriptor form).
 private val COMPOSER_TYPE_PREFIX_REGEX = Regex("""^L[a-z]0/.+;$""")
+
+/**
+ * The canonical (non-synthetic) `Features` constructor on the per-APK
+ * [mtgaTargets] `featuresClass`: shape `(ZZ + N boxed Booleans)V`. R8 appends
+ * a new flag to the end each release (6 Booleans on ≤1.26.1, 8 on 1.26.2, 9 on
+ * 1.27.x), so match the stable `ZZ`+Boolean prefix rather than a fixed arity.
+ * Leading args keep their positions across builds, so the premium patches'
+ * positional writes (`p1` tvEnabled, `p3`/`p4` edits, `p5`/`p6` schedule) stay
+ * valid. Throws [PatchException] if no such ctor exists.
+ */
+internal fun BytecodePatchContext.featuresCanonicalCtor(): MutableMethod {
+    val cls = mutableClassByType(mtgaTargets.featuresClass.descriptor)
+    return cls.methods.firstOrNull {
+        it.name == "<init>" && FEATURES_CTOR_SHAPE_REGEX.matches(it.parameters.joinToString("") { p -> p.type })
+    } ?: throw PatchException("${mtgaTargets.featuresClass.name}: canonical ZZ+Boolean ctor not found")
+}
+
+private val FEATURES_CTOR_SHAPE_REGEX = Regex("""^ZZ(Ljava/lang/Boolean;)+$""")
