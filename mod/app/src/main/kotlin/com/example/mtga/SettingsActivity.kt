@@ -28,11 +28,34 @@ class SettingsActivity : ComponentActivity() {
         val prefs = openWorldReadablePrefs()
         migrateLegacyPrivatePrefs(prefs)
         runPremiumDefaultMigration(prefs)
+        // Register AFTER the one-shot migrations so their writes don't count as
+        // a user edit. From here, only a genuine settings change arms the
+        // host-restart marker in [onStop].
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         val activeTargets = resolveInstalledTargetSet()
 
         setContent {
             MtgaSettingsScreen(prefs = prefs, targets = activeTargets)
         }
+    }
+
+    /**
+     * Set when the user changes any real setting (not our bookkeeping keys),
+     * so [onStop] only requests a host restart when something actually changed
+     * — merely opening and closing MTGA Settings should not kill the host.
+     */
+    private var settingsChanged = false
+
+    private val prefsListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key != null && key != SettingKeys.RestartMarker && !key.startsWith("_migration_")) {
+                settingsChanged = true
+            }
+        }
+
+    override fun onDestroy() {
+        runCatching { openWorldReadablePrefs().unregisterOnSharedPreferenceChangeListener(prefsListener) }
+        super.onDestroy()
     }
 
     /**
@@ -49,11 +72,17 @@ class SettingsActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (isFinishing || !isChangingConfigurations) {
+            if (!settingsChanged) {
+                android.util.Log.i("MTGA-Settings", "onStop: no settings changed; skipping host restart")
+                markPrefsFileWorldReadable()
+                return
+            }
             val prefs = openWorldReadablePrefs()
             // Synchronous commit so the file is on disk before the chmod
             // in [markPrefsFileWorldReadable] runs.
             prefs.edit().putLong(SettingKeys.RestartMarker, System.currentTimeMillis()).commit()
-            android.util.Log.i("MTGA-Settings", "onStop: bumped restart marker")
+            settingsChanged = false
+            android.util.Log.i("MTGA-Settings", "onStop: settings changed; bumped restart marker")
             markPrefsFileWorldReadable()
         }
     }
