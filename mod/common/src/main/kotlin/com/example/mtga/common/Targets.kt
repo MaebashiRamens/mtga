@@ -1095,6 +1095,11 @@ private val TargetsV1_26_2 =
         modernPreferencesTextRow = ClassTarget("Ud.d"),
         modernKotlinFunction0 = ClassTarget("ye.a"),
         appBuildInfo = ClassTarget("Zb.a"),
+        // Home-feed Announcement (sponsored banner) Composable lives at
+        // `Ka.a.d(Announcement, Function1, Composer, ii, default)V`, source
+        // marker `Announcement.kt:54`. Same shape as v1.27.0's `La.a` and
+        // v1.27.1's `Na.a`; the feature first ships in v1.26.2.
+        homeAnnouncementRenderer = ClassTarget("Ka.a"),
         resStringHelpCenter = 0x7f1202be,
         resStringVersion = 0x7f1206b7,
     )
@@ -1286,12 +1291,13 @@ private val TargetsV1_27_1 =
         adQueueInsertMethod = "c",
         adImpressionManager = ClassTarget("l7.b"),
         analyticsManager = ClassTarget("ac.c"),
-        // R8 horizontal-class-merger fused the sidebar Composable into
-        // the account-drawer file class. Both [sidebarItemRenderer] and
-        // [accountDrawerScreen] point at A6.I; `D` and `Q` each take an
-        // int textResId arg that the help-center skip logic matches on.
-        sidebarItemRenderer = ClassTarget("A6.I"),
-        sidebarItemMethods = listOf("D", "Q"),
+        // The sidebar item renderer split out of `A6.I` (TruthNavDrawer)
+        // into `A6.l` (NavigationItem.kt). `m` is the int-icon variant,
+        // `n` is the ImageVector variant (used for Help Center via
+        // Material's HelpOutline). Both leaves are void and take the
+        // text resource id as one of the int args.
+        sidebarItemRenderer = ClassTarget("A6.l"),
+        sidebarItemMethods = listOf("m", "n"),
         accountDrawerScreen = ClassTarget("A6.I"),
         // Two gem methods (`f0`, `h0`) on the merged drawer class — list
         // both so the suppressor catches whichever variant runs.

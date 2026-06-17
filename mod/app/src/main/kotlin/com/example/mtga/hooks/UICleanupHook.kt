@@ -269,8 +269,10 @@ class UICleanupHook(
     /**
      * Sidebar entries render via a Composable on [TargetSet.sidebarItemRenderer].
      * v1.26.1: a single `j(modifier, icon, textResId, hasDivider, onClick, …)`.
-     * v1.26.2/v1.27.0: split into `m(modifier, textResId, hasDivider, onClick, …)`
-     * and `n(modifier, vectorIcon, textResId, hasDivider, onClick, …)`.
+     * v1.26.2+: split into `m(modifier, iconId, textResId, hasDivider, onClick, …)`
+     * and `n(modifier, vectorIcon, textResId, hasDivider, onClick, …)`. On
+     * v1.27.1 the NavigationItem class drifted to `A6.l`, separate from the
+     * `A6.I` TruthNavDrawer host.
      *
      * textResId's index differs across methods, so we scan all int args for
      * a match against [TargetSet.resStringHelpCenter].
