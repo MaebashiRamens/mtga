@@ -393,10 +393,11 @@ private fun ToggleRow(
         subtitle = { Text(toggle.description) },
         onCheckedChange = { value ->
             checked = value
-            // Use .commit() to match the legacy synchronous write that the
-            // out-of-process Truth Social side relies on for the restart
-            // handshake.
-            prefs.edit().putBoolean(toggle.key, value).commit()
+            // Async write — the per-row value need not be durable before the
+            // composition continues. Durability for the restart handshake is
+            // provided by the synchronous RestartMarker commit in
+            // SettingsActivity.onStop, not by each row.
+            prefs.edit().putBoolean(toggle.key, value).apply()
         },
     )
 }
@@ -440,7 +441,7 @@ private fun PremiumModeRow(
                     pendingForceEnable = true
                 } else {
                     selection = mode
-                    prefs.edit().putString(entry.key, mode.storageValue).commit()
+                    prefs.edit().putString(entry.key, mode.storageValue).apply()
                 }
             },
         )
@@ -465,7 +466,7 @@ private fun PremiumModeRow(
                     selection = PremiumMode.ForceEnable
                     prefs.edit()
                         .putString(entry.key, PremiumMode.ForceEnable.storageValue)
-                        .commit()
+                        .apply()
                 }) { Text("Enable anyway") }
             },
             dismissButton = {
@@ -508,7 +509,7 @@ private fun FeatureOverrideRow(
             onSelect = { mode ->
                 if (mode == selection) return@TriStateRadioRow
                 selection = mode
-                prefs.edit().putString(entry.key, mode.storageValue).commit()
+                prefs.edit().putString(entry.key, mode.storageValue).apply()
             },
         )
     }
