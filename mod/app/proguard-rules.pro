@@ -5,8 +5,9 @@
 -keep class com.example.mtga.SettingsActivity { *; }
 -keep class com.example.mtga.config.SettingsContentProvider { *; }
 
-# Hook classes are reflected by name through MainHook.installHooks; nothing
-# in the bytecode references them by symbol other than that list.
+# MainHook references every hook class directly, so R8 keeps them reachable
+# either way; this rule preserves their original names so Xposed logs
+# (`<hook.name> applied/failed`) and stack traces stay diagnosable.
 -keep class com.example.mtga.hooks.** { *; }
 
 # Settings / SettingKeys / PremiumMode / FeatureOverride are touched cross-

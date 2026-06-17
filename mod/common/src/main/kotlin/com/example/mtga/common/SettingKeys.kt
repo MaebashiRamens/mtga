@@ -2,9 +2,11 @@ package com.example.mtga.common
 
 /**
  * Single source of truth for the SharedPreferences key names that drive the
- * MTGA feature toggles. Used by:
- *  - mod/app: SettingsActivity (writes), SettingsHolder (reads)
- *  - patches: build-time toggle for whether to apply each patch
+ * MTGA feature toggles. Consumed only by the mod/app runtime hooks:
+ * SettingsActivity (writes) and SettingsHolder (reads). The patches vector
+ * does not reference these keys — a patch's inclusion is decided structurally
+ * (`use = true/false` when assembling the `.rvp`), not via any PatchOption
+ * keyed on a SettingKeys constant.
  */
 object SettingKeys {
     const val PREFS_NAME = "mtga_settings"

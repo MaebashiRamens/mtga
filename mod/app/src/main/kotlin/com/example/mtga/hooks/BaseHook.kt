@@ -9,7 +9,7 @@ import com.example.mtga.common.TargetSet
  * [com.example.mtga.common.Targets.knownVersions], MainHook injects a
  * [com.example.mtga.common.StaticResolver] and the hook sees the precomputed
  * [TargetSet] verbatim. For unknown builds, MainHook injects a
- * [com.example.mtga.common.FallbackResolver] that wraps the latest known set
+ * [com.example.mtga.FallbackResolver] that wraps the latest known set
  * and tries dynamic discovery for symbols with stable runtime anchors.
  *
  * Hooks consuming only R8-obfuscated names can read [targets] directly;
