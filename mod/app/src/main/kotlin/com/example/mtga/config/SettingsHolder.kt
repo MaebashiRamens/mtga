@@ -2,6 +2,7 @@ package com.example.mtga.config
 
 import android.content.Context
 import android.net.Uri
+import com.example.mtga.SettingsActivity
 import de.robv.android.xposed.XposedBridge
 
 /**
@@ -29,8 +30,8 @@ import de.robv.android.xposed.XposedBridge
  * at hook init via [bind] so other hooks can start activities.
  */
 internal object SettingsHolder {
-    private const val PROVIDER_AUTHORITY = "com.example.mtga.settings"
-    private val PROVIDER_URI: Uri = Uri.parse("content://$PROVIDER_AUTHORITY/all")
+    private const val PROVIDER_AUTHORITY = SettingsContentProvider.AUTHORITY
+    private val PROVIDER_URI: Uri = SettingsContentProvider.URI_ALL
 
     private val cache: MutableMap<String, String> = HashMap()
 
@@ -226,8 +227,8 @@ internal object SettingsHolder {
         // which keeps resetting the canonical `shared_prefs/` copy to 0600.
         val candidates =
             listOf(
-                java.io.File("/data/user/0/com.example.mtga/files/mtga_settings_export.xml"),
-                java.io.File("/data/data/com.example.mtga/files/mtga_settings_export.xml"),
+                java.io.File("/data/user/0/com.example.mtga/files/${SettingsActivity.EXPORT_FILE_NAME}"),
+                java.io.File("/data/data/com.example.mtga/files/${SettingsActivity.EXPORT_FILE_NAME}"),
                 java.io.File("/data/user/0/com.example.mtga/shared_prefs/mtga_settings.xml"),
                 java.io.File("/data/data/com.example.mtga/shared_prefs/mtga_settings.xml"),
             )
