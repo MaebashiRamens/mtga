@@ -1,15 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!--
-        Granted automatically (normal-protection) — no runtime prompt. We use
-        it from SettingsActivity to kill the Truth Social process when the
-        user leaves MTGA Settings, so the host restarts with the freshly-
-        edited preferences on its next launch. Limited to backgrounded
-        processes by the Android framework, which is exactly the case here.
-    -->
-    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
-
     <application
         android:label="MTGA"
         android:theme="@android:style/Theme.DeviceDefault">
