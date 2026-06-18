@@ -3,6 +3,7 @@ package com.example.mtga.patches.ui
 import app.revanced.patcher.patch.bytecodePatch
 import com.example.mtga.patches.MTGA_COMPATIBLE_VERSIONS
 import com.example.mtga.patches.MTGA_TARGET_PACKAGE
+import com.example.mtga.patches.dropFeedItemTypes
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByTypeOrNull
 import com.example.mtga.patches.neutraliseComposables
@@ -37,12 +38,25 @@ val hideTopBannerAdPatch =
 
         execute {
             val targets = mtgaTargets
-            listOfNotNull(
-                targets.embeddedAnnouncement,
-                targets.nonNativeAdRenderer,
-                targets.homeAnnouncementRenderer,
-            ).forEach { classTarget ->
-                mutableClassByTypeOrNull(classTarget.descriptor)?.neutraliseComposables()
+            if (targets.feedItemMapper != null) {
+                // v1.26.2+: the ad/announcement renderers are in-timeline
+                // FeedItems. Neutralising their Composables desyncs the slot
+                // table and freezes Like/ReTruth (matches the LSPosed bug), so
+                // instead drop those FeedItems from the mapper's list — the
+                // dispatcher never renders them. No Composable is skipped.
+                dropFeedItemTypes("NonNativeAd", "NativeAd", "Announcement")
+            } else {
+                // ≤v1.26.1: no FeedItem dispatcher. The announcement is a
+                // standalone top-banner header (single call site, not
+                // interleaved with statuses), so neutralising its Composable is
+                // safe here.
+                listOfNotNull(
+                    targets.embeddedAnnouncement,
+                    targets.nonNativeAdRenderer,
+                    targets.homeAnnouncementRenderer,
+                ).forEach { classTarget ->
+                    mutableClassByTypeOrNull(classTarget.descriptor)?.neutraliseComposables()
+                }
             }
         }
     }

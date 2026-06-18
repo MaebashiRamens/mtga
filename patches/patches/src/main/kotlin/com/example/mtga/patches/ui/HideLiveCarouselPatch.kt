@@ -3,6 +3,8 @@ package com.example.mtga.patches.ui
 import app.revanced.patcher.patch.bytecodePatch
 import com.example.mtga.patches.MTGA_COMPATIBLE_VERSIONS
 import com.example.mtga.patches.MTGA_TARGET_PACKAGE
+import com.example.mtga.patches.dropFeedItemTypes
+import com.example.mtga.patches.emptyFirstListArg
 import com.example.mtga.patches.mtgaTargets
 import com.example.mtga.patches.mutableClassByTypeOrNull
 import com.example.mtga.patches.neutraliseComposables
@@ -32,9 +34,23 @@ val hideLiveCarouselPatch =
 
         execute {
             val targets = mtgaTargets
+            // In-timeline live items (when dispatched as FeedItems): drop them
+            // from the mapper list. No-op on builds without the dispatcher.
+            dropFeedItemTypes("LiveShowsCarousel", "ChannelGuideItem")
+
+            // The carousel renderer itself is mounted as a home-screen header
+            // (outside the mapper) on newer builds. Empty its list arg instead
+            // of neutralising it — the Composable runs its group machinery and
+            // renders nothing via its own isEmpty() branch, so no slot desync.
             targets.liveContentCarousel?.let { classTarget ->
-                mutableClassByTypeOrNull(classTarget.descriptor)?.neutraliseComposables()
+                mutableClassByTypeOrNull(classTarget.descriptor)?.let { cls ->
+                    emptyFirstListArg(cls, targets.liveContentCarouselMethod)
+                }
             }
+
+            // Extra renderers (chip strip "See Less Often" header / TV card)
+            // are standalone headers, not interleaved with statuses, so
+            // neutralising their Composables is safe.
             for (classTarget in targets.extraLiveRenderers) {
                 mutableClassByTypeOrNull(classTarget.descriptor)?.neutraliseComposables()
             }

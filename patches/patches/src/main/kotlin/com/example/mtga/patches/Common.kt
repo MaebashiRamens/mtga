@@ -3,10 +3,13 @@ package com.example.mtga.patches
 import app.revanced.com.android.tools.smali.dexlib2.mutable.MutableClassDef
 import app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod
 import app.revanced.patcher.extensions.addInstructions
+import app.revanced.patcher.extensions.addInstructionsWithLabels
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patcher.patch.PatchException
 import com.android.tools.smali.dexlib2.AccessFlags
+import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.ClassDef
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.value.StringEncodedValue
 import com.example.mtga.common.TargetSet
 import com.example.mtga.common.Targets
@@ -116,3 +119,115 @@ internal fun BytecodePatchContext.featuresCanonicalCtor(): MutableMethod {
 }
 
 private val FEATURES_CTOR_SHAPE_REGEX = Regex("""^ZZ(Ljava/lang/Boolean;)+$""")
+
+/** R8 keeps this FQN (Moshi-serialised); stable on every FeedItem-dispatcher build. */
+private const val FEED_ITEM_TYPE_DESCRIPTOR = "Lcom/truthsocial/core/data/models/FeedItemType;"
+
+/**
+ * Build-time equivalent of `UICleanupHook.installFeedItemFilter`: drop FeedItems
+ * whose `FeedItemType.name()` is in [typeNames] from the home-timeline mapper's
+ * returned `ArrayList`, so the ad / announcement / live renderer Composables are
+ * never invoked.
+ *
+ * Compose-SAFE — it filters DATA, never empties a Composable body. Emptying a
+ * Composable (the old `neutraliseComposables` path) desyncs the Compose slot
+ * table and freezes Like/ReTruth recomposition; filtering the list the
+ * dispatcher iterates avoids that entirely.
+ *
+ * No-op when [TargetSet.feedItemMapper] / [TargetSet.feedItemWrapper] aren't
+ * calibrated (builds ≤1.26.1 predate the FeedItem dispatcher). On the three
+ * calibrated builds (v1.26.2/1.27.0/1.27.1) the mapper is identical in shape:
+ * it builds the list in `v0` and ends with a single `return-object v0`, with
+ * `.locals 5` so `v1`..`v4` are free temps at the return. Throws [PatchException]
+ * if a future build breaks that assumption rather than emitting wrong bytecode.
+ */
+internal fun BytecodePatchContext.dropFeedItemTypes(vararg typeNames: String) {
+    val targets = mtgaTargets
+    val mapperDesc = targets.feedItemMapper?.descriptor ?: return
+    val wrapperDesc = targets.feedItemWrapper?.descriptor ?: return
+    val cls = mutableClassByTypeOrNull(mapperDesc) ?: return
+    val method =
+        cls.methodsNamed(targets.feedItemMapperMethod)
+            .firstOrNull { it.returnType == "Ljava/util/ArrayList;" }
+            ?: throw PatchException("$mapperDesc.${targets.feedItemMapperMethod}: FeedItem mapper not found")
+
+    val instructions = method.implementation?.instructions?.toList() ?: return
+    val ret =
+        instructions.withIndex().lastOrNull { it.value.opcode == Opcode.RETURN_OBJECT }
+            ?: throw PatchException("$mapperDesc.${targets.feedItemMapperMethod}: no return-object")
+    val retReg = (ret.value as OneRegisterInstruction).registerA
+    if (retReg != 0) {
+        throw PatchException("$mapperDesc.${targets.feedItemMapperMethod}: unexpected return register v$retReg (expected v0)")
+    }
+
+    // Unique label suffix so HideTopBannerAd and HideLiveCarousel can each
+    // inject a pass into the same mapper without colliding.
+    val tag = typeNames.first().filter(Char::isLetterOrDigit)
+    val checks =
+        typeNames.joinToString("\n") { name ->
+            """
+            const-string v4, "$name"
+            invoke-virtual {v3, v4}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+            move-result v4
+            if-nez v4, :mtga_rm_$tag
+            """.trimIndent()
+        }
+    method.addInstructionsWithLabels(
+        ret.index,
+        """
+        invoke-virtual {v0}, Ljava/util/ArrayList;->iterator()Ljava/util/Iterator;
+        move-result-object v1
+        :mtga_loop_$tag
+        invoke-interface {v1}, Ljava/util/Iterator;->hasNext()Z
+        move-result v4
+        if-eqz v4, :mtga_end_$tag
+        invoke-interface {v1}, Ljava/util/Iterator;->next()Ljava/lang/Object;
+        move-result-object v2
+        check-cast v2, $wrapperDesc
+        iget-object v3, v2, $wrapperDesc->${targets.feedItemTypeField}:$FEED_ITEM_TYPE_DESCRIPTOR
+        invoke-virtual {v3}, Ljava/lang/Enum;->name()Ljava/lang/String;
+        move-result-object v3
+        $checks
+        goto :mtga_loop_$tag
+        :mtga_rm_$tag
+        invoke-interface {v1}, Ljava/util/Iterator;->remove()V
+        goto :mtga_loop_$tag
+        :mtga_end_$tag
+        nop
+        """.trimIndent(),
+    )
+}
+
+/**
+ * Overwrite the first `List` parameter of every [methodName] on [cls] with
+ * `Collections.emptyList()` at method entry. Build-time equivalent of the
+ * runtime arg-empty: the (Composable) renderer still runs its full group
+ * machinery and renders nothing via its own `isEmpty()` branch, so — unlike
+ * `neutraliseComposables` — it doesn't desync the slot table. Used for the
+ * live carousel renderer, which on newer builds is a list-driven Composable
+ * that the home screen mounts as a header outside the FeedItem mapper.
+ */
+internal fun BytecodePatchContext.emptyFirstListArg(
+    cls: MutableClassDef,
+    methodName: String,
+) {
+    cls.methodsNamed(methodName).forEach { method ->
+        var reg = 0
+        var listReg = -1
+        for (p in method.parameters) {
+            if (p.type == "Ljava/util/List;") {
+                listReg = reg
+                break
+            }
+            reg += if (p.type == "J" || p.type == "D") 2 else 1
+        }
+        if (listReg < 0) return@forEach
+        method.addInstructions(
+            0,
+            """
+            invoke-static {}, Ljava/util/Collections;->emptyList()Ljava/util/List;
+            move-result-object p$listReg
+            """.trimIndent(),
+        )
+    }
+}

@@ -232,6 +232,14 @@ data class TargetSet(
      */
     val feedItemTypeField: String = "b",
     /**
+     * The FeedItem wrapper class held in the list [feedItemMapper] returns
+     * (`ld.a` on v1.27.1, `ed.a` on v1.26.2, `hd.a` on v1.27.0). The LSPosed
+     * hook reads [feedItemTypeField] reflectively and needs no descriptor, but
+     * the build-time ReVanced filter has to `iget` the field, so it needs the
+     * wrapper's DEX type. Null where [feedItemMapper] is null.
+     */
+    val feedItemWrapper: ClassTarget? = null,
+    /**
      * `AppStateManagerImpl`. Bottom-bar nav + badge counts.
      *
      * HOW TO LOCATE: a class with `c(menuItem)`, `e(menuItem)` and
@@ -1130,6 +1138,7 @@ private val TargetsV1_26_2 =
         // `ed.a` with the FeedItemType in field `b`.
         feedItemMapper = ClassTarget("Ae.a"),
         feedItemMapperMethod = "q",
+        feedItemWrapper = ClassTarget("ed.a"),
         resStringHelpCenter = 0x7f1202be,
         resStringVersion = 0x7f1206b7,
     )
@@ -1239,6 +1248,7 @@ private val TargetsV1_27_0 =
         // `hd.a` with the FeedItemType in field `b`.
         feedItemMapper = ClassTarget("L5.c"),
         feedItemMapperMethod = "y",
+        feedItemWrapper = ClassTarget("hd.a"),
         askPerplexityButton = ClassTarget("S8.E"),
         askPerplexityButtonMethod = "p",
         appBuildInfo = ClassTarget("ac.a"),
@@ -1386,6 +1396,7 @@ private val TargetsV1_27_1 =
         // this build. `k0.m.f(List, TimelineType)` builds the timeline list;
         // each element (`ld.a`) carries its FeedItemType in field `b`.
         feedItemMapper = ClassTarget("k0.m"),
+        feedItemWrapper = ClassTarget("ld.a"),
         askPerplexityButton = ClassTarget("U8.E"),
         askPerplexityButtonMethod = "p",
         appBuildInfo = ClassTarget("ec.a"),
