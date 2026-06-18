@@ -37,6 +37,55 @@ class UICleanupHook(
         runSubHook("BlockTruthPlusUpsell", SettingKeys.BlockTruthPlusUpsell, classLoader, ::hookBlockTruthPlusUpsell)
         runSubHook("HideTopBannerAd", SettingKeys.HideTopBannerAd, classLoader, ::hookEmbeddedAnnouncement)
         runSubHook("HideLiveCarousel", SettingKeys.HideLiveCarousel, classLoader, ::hookLiveCarousel)
+        // Compose-safe data-layer suppression of ad/announcement/live feed
+        // items on calibrated builds (TargetSet.feedItemMapper). Supersedes the
+        // two Compose no-op sub-hooks above, which desync the slot table.
+        runCatching { installFeedItemFilter(classLoader) }
+            .onFailure { XposedBridge.log("[$TAG] FeedItem filter failed: ${it.message}") }
+    }
+
+    /**
+     * Compose-SAFE replacement for [hookEmbeddedAnnouncement] / [hookLiveCarousel]
+     * on builds with a calibrated [TargetSet.feedItemMapper]: drop ad /
+     * announcement / live items from the home-timeline list before the
+     * dispatcher renders them, so no Composable is ever skipped. Skipping one
+     * (the legacy `noopAllComposables` path) desyncs the Compose slot table and
+     * freezes recomposition of neighbouring posts — e.g. the Like / ReTruth
+     * buttons don't update until restart.
+     *
+     * Honours the two toggles independently: HideTopBannerAd drops the ad and
+     * announcement item types; HideLiveCarousel drops the live ones.
+     */
+    private fun installFeedItemFilter(classLoader: ClassLoader) {
+        val mapper = targets.feedItemMapper ?: return
+        val drop = HashSet<String>()
+        if (Settings.isOn(SettingKeys.HideTopBannerAd)) drop += AD_FEED_ITEM_TYPES
+        if (Settings.isOn(SettingKeys.HideLiveCarousel)) drop += LIVE_FEED_ITEM_TYPES
+        if (drop.isEmpty()) return
+
+        val mapperClass = XposedHelpers.findClass(mapper.name, classLoader)
+        val typeField = targets.feedItemTypeField
+        XposedBridge.hookAllMethods(
+            mapperClass,
+            targets.feedItemMapperMethod,
+            object : XC_MethodHook() {
+                @Suppress("UNCHECKED_CAST")
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    val list = param.result as? List<Any> ?: return
+                    val filtered =
+                        list.filterNot { item ->
+                            val type = runCatching { XposedHelpers.getObjectField(item, typeField) }.getOrNull()
+                            val name = (type as? Enum<*>)?.name
+                            name != null && name in drop
+                        }
+                    if (filtered.size != list.size) {
+                        XposedBridge.log("[$TAG] FeedItem filter: dropped ${list.size - filtered.size}/${list.size} ($drop)")
+                        param.result = ArrayList(filtered)
+                    }
+                }
+            },
+        )
+        XposedBridge.log("[$TAG] Home FeedItem filter installed (${mapper.name}.${targets.feedItemMapperMethod}, drop=$drop)")
     }
 
     private fun runSubHook(
@@ -63,6 +112,10 @@ class UICleanupHook(
      *    renderer dispatched as `FeedItemType.AnnouncementItem`.
      */
     private fun hookEmbeddedAnnouncement(classLoader: ClassLoader) {
+        // On builds with a calibrated FeedItem mapper, ad/announcement banners
+        // are dropped at the data layer ([installFeedItemFilter]); skipping the
+        // renderer Composables here would desync the Compose slot table.
+        if (targets.feedItemMapper != null) return
         targets.embeddedAnnouncement?.let { target ->
             val cls =
                 try {
@@ -104,32 +157,48 @@ class UICleanupHook(
         }
     }
 
+    /**
+     * Hide the livestream/shows carousel (e.g. the "… Live" cards at the top of
+     * the home feed). SAFE suppression: do NOT skip the carousel Composable —
+     * skipping a Composable desyncs the Compose slot table and froze Like/
+     * ReTruth recomposition (the original bug). Instead empty its data list in
+     * `beforeHookedMethod`: the Composable still runs its full group machinery
+     * and renders nothing via its own `isEmpty()` branch. This works whether
+     * the carousel is a home-feed header or an in-timeline FeedItem, since it
+     * targets the renderer itself rather than the feed list.
+     */
     private fun hookLiveCarousel(classLoader: ClassLoader) {
-        val target = targets.liveContentCarousel ?: return
-        val cls =
-            try {
-                XposedHelpers.findClass(target.name, classLoader)
-            } catch (t: Throwable) {
-                XposedBridge.log("[$TAG] LiveContentCarousel class missing (${target.name}): ${t.message}")
-                return
-            }
-        // Drop every public Composable on the file class — sub-Composables
-        // (header, card, overlay) get mounted independently by the parent
-        // Compose tree, so suppressing only the main entry leaves
-        // visible fragments.
-        val killed = noopAllComposables(cls)
-        XposedBridge.log("[$TAG] Live content carousel suppressed (${target.name}, $killed methods)")
-
-        for (extra in targets.extraLiveRenderers) {
-            val extraCls =
-                try {
-                    XposedHelpers.findClass(extra.name, classLoader)
-                } catch (t: Throwable) {
-                    XposedBridge.log("[$TAG] extra live class missing (${extra.name}): ${t.message}")
-                    continue
+        val emptyListArg =
+            object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    for (i in param.args.indices) {
+                        if (param.args[i] is List<*>) {
+                            param.args[i] = emptyList<Any>()
+                            return
+                        }
+                    }
                 }
-            val extraKilled = noopAllComposables(extraCls)
-            XposedBridge.log("[$TAG] extra live renderer suppressed (${extra.name}, $extraKilled methods)")
+            }
+
+        val target = targets.liveContentCarousel ?: return
+        runCatching {
+            val cls = XposedHelpers.findClass(target.name, classLoader)
+            val n = XposedBridge.hookAllMethods(cls, targets.liveContentCarouselMethod, emptyListArg).size
+            XposedBridge.log("[$TAG] Live carousel emptied (${target.name}.${targets.liveContentCarouselMethod}, $n method(s))")
+        }.onFailure { XposedBridge.log("[$TAG] Live carousel hook failed (${target.name}): ${it.message}") }
+
+        // Extra live renderers (e.g. the avatar chip strip with its
+        // "See Less Often" section header): these are home-screen HEADERS,
+        // not in-timeline FeedItems (rendered via A6.t, not the La.N$b
+        // dispatcher). Emptying their list leaves the section header behind, so
+        // suppress the whole Composable. Skipping a header doesn't desync the
+        // timeline's LazyColumn, so Like/ReTruth recomposition stays intact.
+        for (extra in targets.extraLiveRenderers) {
+            runCatching {
+                val extraCls = XposedHelpers.findClass(extra.name, classLoader)
+                val killed = noopAllComposables(extraCls)
+                XposedBridge.log("[$TAG] extra live renderer suppressed (${extra.name}, $killed methods)")
+            }.onFailure { XposedBridge.log("[$TAG] extra live hook failed (${extra.name}): ${it.message}") }
         }
     }
 
@@ -569,5 +638,12 @@ class UICleanupHook(
         // `<letter>0` top-level package per release (drifts between
         // builds: `s0` on v1.24.10, `v0` on v1.27.x).
         private val COMPOSER_PACKAGE_REGEX = Regex("""^[a-z]0\..+""")
+
+        // FeedItemType enum constant names dropped by [installFeedItemFilter].
+        // The enum is FQN-stable (Moshi-serialised), so `Enum.name()` is stable
+        // across R8 builds. HideTopBannerAd drops ads + the home announcement
+        // banner; HideLiveCarousel drops the livestream carousel + channel guide.
+        private val AD_FEED_ITEM_TYPES = setOf("NonNativeAd", "NativeAd", "Announcement")
+        private val LIVE_FEED_ITEM_TYPES = setOf("LiveShowsCarousel", "ChannelGuideItem")
     }
 }

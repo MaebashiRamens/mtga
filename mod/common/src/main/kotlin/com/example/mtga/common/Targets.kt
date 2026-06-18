@@ -207,6 +207,31 @@ data class TargetSet(
      */
     val feedIdField: String = "a",
     /**
+     * Home-timeline FeedItem mapper: the plain `static` method that builds the
+     * `List<FeedItem>` the timeline iterates from the merged status/ad/
+     * announcement/live list. Hooking its returned list to drop ad/announcement/
+     * live items is the Compose-SAFE way to suppress those banners — skipping
+     * the renderer Composables (the legacy `noopAllComposables` path) desyncs
+     * the Compose slot table and breaks recomposition of neighbouring posts.
+     *
+     * Null on builds not yet calibrated for the data-layer approach; those fall
+     * back to the legacy Compose no-op hooks in [com.example.mtga.hooks.UICleanupHook].
+     *
+     * HOW TO LOCATE: the `public static` method returning `ArrayList` and taking
+     * `(List, TimelineType)`; its result is handed to the TruthTimeline
+     * composable. The list elements are a wrapper with a `FeedItemType` field
+     * ([feedItemTypeField]). v1.27.1: `k0.m`.
+     */
+    val feedItemMapper: ClassTarget? = null,
+    /** Method on [feedItemMapper] building the FeedItem list. Usually `f`. */
+    val feedItemMapperMethod: String = "f",
+    /**
+     * Field on each FeedItem wrapper holding its `FeedItemType` enum. The hook
+     * reads it reflectively and drops items by the enum's stable `name()`
+     * (`NonNativeAd`/`Announcement`/`LiveShowsCarousel`/…). Usually `b`.
+     */
+    val feedItemTypeField: String = "b",
+    /**
      * `AppStateManagerImpl`. Bottom-bar nav + badge counts.
      *
      * HOW TO LOCATE: a class with `c(menuItem)`, `e(menuItem)` and
@@ -1100,6 +1125,11 @@ private val TargetsV1_26_2 =
         // marker `Announcement.kt:54`. Same shape as v1.27.0's `La.a` and
         // v1.27.1's `Na.a`; the feature first ships in v1.26.2.
         homeAnnouncementRenderer = ClassTarget("Ka.a"),
+        // Data-layer FeedItem filter (Compose-safe) — same fix as v1.27.1.
+        // `Ae.a.q(List, TimelineType)` builds the timeline list; elements are
+        // `ed.a` with the FeedItemType in field `b`.
+        feedItemMapper = ClassTarget("Ae.a"),
+        feedItemMapperMethod = "q",
         resStringHelpCenter = 0x7f1202be,
         resStringVersion = 0x7f1206b7,
     )
@@ -1204,6 +1234,11 @@ private val TargetsV1_27_0 =
         // renderer for the "UFC Freedom 250 / Proudly sponsored by Truth
         // Social / Learn More" banner — `Ja.O case 1` → `La.a.d`.
         homeAnnouncementRenderer = ClassTarget("La.a"),
+        // Data-layer FeedItem filter (Compose-safe) — same fix as v1.27.1.
+        // `L5.c.y(List, TimelineType)` builds the timeline list; elements are
+        // `hd.a` with the FeedItemType in field `b`.
+        feedItemMapper = ClassTarget("L5.c"),
+        feedItemMapperMethod = "y",
         askPerplexityButton = ClassTarget("S8.E"),
         askPerplexityButtonMethod = "p",
         appBuildInfo = ClassTarget("ac.a"),
@@ -1346,6 +1381,11 @@ private val TargetsV1_27_1 =
             ),
         nonNativeAdRenderer = ClassTarget("l6.a"),
         homeAnnouncementRenderer = ClassTarget("Na.a"),
+        // Data-layer FeedItem filter (Compose-safe) — replaces the legacy
+        // noopAllComposables path for HideTopBannerAd / HideLiveCarousel on
+        // this build. `k0.m.f(List, TimelineType)` builds the timeline list;
+        // each element (`ld.a`) carries its FeedItemType in field `b`.
+        feedItemMapper = ClassTarget("k0.m"),
         askPerplexityButton = ClassTarget("U8.E"),
         askPerplexityButtonMethod = "p",
         appBuildInfo = ClassTarget("ec.a"),
